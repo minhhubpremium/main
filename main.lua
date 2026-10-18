@@ -970,7 +970,7 @@ do
             {75,  "DesertQuest",    2, "Desert Officer",      V(863.57, 6.21, 4453.27),       V(1561.47, 13.73, 4162.75)},
             {90,  "SnowQuest",      1, "Snow Bandit",         V(1396.68, 78.34, -1312.58),    V(1354.35, 87.27, -1393.95)},
             {100, "SnowQuest",      2, "Snowman",             V(1396.68, 78.34, -1312.58),    V(1148.34, 97.52, -1661.28)},
-            {120, "MarineQuest2",   1, "Chief Petty Officer", V-4701.63, 6.19, 4224.32),    V(-4822.64, 4.18, 4098.37)},
+            {120, "MarineQuest2",   1, "Chief Petty Officer", V(-4701.63, 6.19, 4224.32), V(-4822.64, 4.18, 4098.37)},
             {150, "SkyQuest",       1, "Sky Bandit",          V(-5401.33, 415.73, -694.87),  V(-5118.66, 279.39, -1085.51)},
             {175, "SkyQuest",       2, "Dark Master",         V(-5401.33, 415.73, -694.87),  V(-5310.52, 501.51, -356.85)},
             {190, "PrisonerQuest",  1, "Prisoner",            V(5204.00, 24.55, 737.12),       V(5284.89, 19.55, 509.94)},
@@ -1089,16 +1089,20 @@ do
     -- (gần vị trí dự phòng nhất). Trả về nil nếu không tìm thấy.
     function GetQuestMobSpawn(mobName, nearPos)
         if not mobName then return nil end
-        local cached = spawnCache[mobName]
-        if cached and tick() - cached.t < 10 then return cached.pos end
-
-        local want = norm(mobName)
         local origin = nearPos
         if not origin then
-            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            origin = hrp and hrp.Position
+            local playerRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            origin = playerRoot and playerRoot.Position
         end
 
+        -- Cache theo Sea + khu vực mục tiêu. Không dùng lại điểm spawn cũ nếu nó nằm ở đảo khác.
+        local cached = spawnCache[mobName]
+        if cached and cached.pos and cached.sea == currentSeaIndex and tick() - cached.t < 10 then
+            local cacheNear = not origin or (cached.pos - origin).Magnitude <= 2200
+            if cacheNear then return cached.pos end
+        end
+
+        local want = norm(mobName)
         local best, bestDist = nil, math.huge
         local wo = workspace:FindFirstChild("_WorldOrigin")
         local spawns = wo and wo:FindFirstChild("EnemySpawns")
@@ -1116,7 +1120,10 @@ do
                         end
                         if pos then
                             local d = origin and (pos - origin).Magnitude or 0
-                            if d < bestDist then best, bestDist = pos, d end
+                            -- Điểm spawn phải gần vị trí dự phòng của quest; bỏ qua kết quả fuzzy ở đảo khác.
+                            if (not origin or d <= 2200) and d < bestDist then
+                                best, bestDist = pos, d
+                            end
                         end
                     end
                 end
@@ -1124,7 +1131,7 @@ do
             end
         end
 
-        spawnCache[mobName] = {t = tick(), pos = best}
+        spawnCache[mobName] = {t = tick(), pos = best, origin = origin, sea = currentSeaIndex}
         return best
     end
 end
@@ -1290,23 +1297,41 @@ Q.flyingToExit = false
 -- Điểm thoát dùng riêng cho Auto Pickup Fruit: đang ở Underwater City mà trái rơi ở ngoài -> bay tới đây trước.
 Q.UNDERWATER_FRUIT_EXIT = Vector3.new(61171.62, -3.95, 1953.09)
 
--- Trả về true nếu còn đang bay tới / chờ dịch chuyển ở điểm thoát (vòng farm nên chờ), false khi xong/bỏ cuộc.
+-- Trả về true khi vẫn đang thoát Underwater City; false chỉ khi đã ở ngoài đảo.
+-- Dùng tốc độ bay riêng và gọi requestEntrance ra ngoài, không đứng chờ ở tọa độ trong đảo 30 giây.
 function Q.flyToUnderwaterExit(hrp)
-    local ex = Q.UNDERWATER_EXIT
-    local dist = (hrp.Position - ex).Magnitude
-    if dist > 15 then
+    if not hrp or not hrp.Parent then return true end
+
+    -- Đã ra ngoài: xóa trạng thái để Auto Farm Chest tiếp tục tìm rương bình thường.
+    if hrp.Position.X < 50000 then
+        Q.flyingToExit = false
         Q.exitNearAt = nil
-        if not currentFlyTween or not Q.flyingToExit then
+        Q.exitRequestAt = nil
+        return false
+    end
+
+    local ex = Q.UNDERWATER_EXIT
+    local target = ex + Vector3.new(0, 2, 0)
+    local dist = (hrp.Position - target).Magnitude
+
+    -- Không để vòng lặp farm chung hủy tween này. Bay tới điểm thoát nhanh hơn một chút,
+    -- nhưng vẫn dùng TweenService hiện tại để không tạo ra bước nhảy giật liên tục.
+    if dist > 18 then
+        Q.exitNearAt = nil
+        Q.exitRequestAt = nil
+        if not (Q.flyingToExit and currentFlyTween and currentFlyTween.PlaybackState == Enum.PlaybackState.Playing) then
             if currentFlyTween then pcall(function() currentFlyTween:Cancel() end) end
+            currentFlyTween = nil
             Q.flyingToExit = true
-            local tw = TweenService:Create(hrp, TweenInfo.new(dist / flySpeed, Enum.EasingStyle.Linear), {CFrame = CFrame.new(ex + Vector3.new(0, 2, 0))})
+            local exitSpeed = math.max(300, tonumber(flySpeed) or 190)
+            local tw = TweenService:Create(hrp, TweenInfo.new(math.max(dist / exitSpeed, 0.08), Enum.EasingStyle.Linear), {CFrame = CFrame.new(target)})
             currentFlyTween = tw
             tw:Play()
             tw.Completed:Connect(function()
                 if currentFlyTween == tw then currentFlyTween = nil end
                 Q.flyingToExit = false
             end)
-            Q.qlog("Sea 1: xong Underwater City -> bay tới điểm thoát", ex)
+            Q.qlog("Sea 1: Auto Farm Chest đang bay nhanh tới điểm thoát Underwater City", ex)
         end
         return true
     end
@@ -1317,31 +1342,45 @@ function Q.flyToUnderwaterExit(hrp)
     end
     Q.flyingToExit = false
     Q.exitNearAt = Q.exitNearAt or tick()
-    hrp.CFrame = CFrame.new(ex + Vector3.new(0, 2, 0))
+    hrp.CFrame = CFrame.new(target)
     hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
 
-    -- chạm thử các part cổng / xoáy / portal gần điểm thoát để được dịch chuyển ra ngoài
-    if typeof(firetouchinterest) == "function" and tick() - Q.exitNearAt >= Q.PORTAL_WAIT and tick() - (Q.exitTouchAt or 0) > 2 then
-        Q.exitTouchAt = tick()
-        local map = workspace:FindFirstChild("Map")
-        if map then
-            for _, d in ipairs(map:GetDescendants()) do
-                if d:IsA("BasePart") and (d.Position - ex).Magnitude <= 80 then
-                    local n = string.lower(d.Name)
-                    if string.find(n, "whirlpool", 1, true) or string.find(n, "portal", 1, true) or string.find(n, "exit", 1, true)
-                        or string.find(n, "gate", 1, true) or string.find(n, "teleport", 1, true) then
-                        pcall(function() firetouchinterest(hrp, d, 0); firetouchinterest(hrp, d, 1) end)
+    -- Thử gọi cổng đích ở ngoài xoáy nước. Lặp có cooldown và xác nhận vị trí thật;
+    -- chỉ cho Auto Farm Chest chạy tiếp sau khi nhân vật đã ra khỏi vùng X > 50000.
+    if tick() - Q.exitNearAt >= 0.35 and tick() - (Q.exitRequestAt or 0) >= 2 then
+        Q.exitRequestAt = tick()
+        local commF = getCommF()
+        if commF then
+            local ok, err = pcall(function()
+                commF:InvokeServer("requestEntrance", Q.FISHMAN_GATE)
+            end)
+            if not ok then Q.qlog("Sea 1: requestEntrance để thoát Underwater City lỗi", tostring(err))
+            else Q.qlog("Sea 1: đã yêu cầu thoát Underwater City qua cổng xoáy", Q.FISHMAN_GATE) end
+        else
+            Q.qlog("Sea 1: chưa thấy CommF_, sẽ thử lại khi remote tải xong")
+        end
+
+        -- Fallback: chạm thử các cổng/portal gần điểm nội bộ đang dùng, nếu map có part tương ứng.
+        if typeof(firetouchinterest) == "function" then
+            local map = workspace:FindFirstChild("Map")
+            if map then
+                for _, d in ipairs(map:GetDescendants()) do
+                    if d:IsA("BasePart") and (d.Position - ex).Magnitude <= 80 then
+                        local n = string.lower(d.Name)
+                        if string.find(n, "whirlpool", 1, true) or string.find(n, "portal", 1, true)
+                            or string.find(n, "exit", 1, true) or string.find(n, "gate", 1, true)
+                            or string.find(n, "teleport", 1, true) then
+                            pcall(function() firetouchinterest(hrp, d, 0); firetouchinterest(hrp, d, 1) end)
+                        end
                     end
                 end
             end
         end
     end
 
-    -- chờ dịch chuyển tối đa 25 giây; quá thời gian thì thôi để farm không bị kẹt mãi ở đây
-    if tick() - Q.exitNearAt > Q.PORTAL_WAIT + 25 then
-        Q.qlog("Sea 1: đứng ở điểm thoát 25s mà chưa ra ngoài -> bỏ qua")
-        return false
-    end
+    -- Giữ trạng thái thoát và thử lại remote sau mỗi 2 giây đến khi X < 50000.
+    -- Không trả false khi còn ở trong thành phố để script không quay lại chọn chest trong đảo.
     return true
 end
 
@@ -4213,14 +4252,18 @@ createToggleFeature(raidPage, "AutoStartRaidToggle", "Auto Start Raid", "Automat
 end)
 
 createToggleFeature(raidPage, "AutoRaidToggle", "Auto Raid", "Automatically defeat mobs and travel between Raid islands", 4, autoRaidEnabled, function(state)
+    -- Auto Raid chỉ điều khiển việc farm quái/di chuyển trong Raid.
+    -- Auto Buy Chip và Auto Start Raid là hai toggle độc lập, không tự bật/tắt theo state này.
     autoRaidEnabled = state
     _G.Dungeon = state
-    -- TÍCH HỢP: bật Auto Raid = tự bật luôn Auto Buy Chip + Auto Start Raid (hiện rõ ô tick); tắt thì tắt cả 3.
-    autoBuyChipEnabled, _G.AutoBuyChip = state, state
-    autoStartRaidEnabled, _G.StartRaid = state, state
-    if toggleUpdateFuncs["AutoBuyChipToggle"] then toggleUpdateFuncs["AutoBuyChipToggle"](state) end
-    if toggleUpdateFuncs["AutoStartRaidToggle"] then toggleUpdateFuncs["AutoStartRaidToggle"](state) end
     if state then
+        if _G.MHRaidFixed then
+            _G.MHRaidFixed.completed = false
+            _G.MHRaidFixed.awaitingCompletion = false
+            _G.MHRaidFixed.entered = false
+            _G.MHRaidFixed.activeSince = nil
+            _G.MHRaidFixed.lastStatus = "Đang quét trạng thái map Raid..."
+        end
         if toggleUpdateFuncs["AutoFarmTargetToggle"] then toggleUpdateFuncs["AutoFarmTargetToggle"](false) end
         if toggleUpdateFuncs["AutoFarmMaterialToggle"] then toggleUpdateFuncs["AutoFarmMaterialToggle"](false) end
         if toggleUpdateFuncs["AutoFarmBossToggle"] then toggleUpdateFuncs["AutoFarmBossToggle"](false) end
@@ -4285,6 +4328,7 @@ local RAID_FIXED = {
     baseReady = false,
     baseIslands = {},
     entered = false,      -- đã thật sự vào map Raid (đứng gần đảo Raid) trong lượt Raid này
+    awaitingCompletion = false, -- đã dọn đảo cuối; chờ server kết thúc đồng hồ Raid, không farm lại từ đảo 1
     mapRadius = 1200,      -- bán kính (studs) quanh đảo Raid được tính là "đã vào map Raid"
     flightTween = nil,
     lockConnection = nil,
@@ -4560,7 +4604,9 @@ end
 local function getRaidTimer()
     local pg = LocalPlayer:FindFirstChild("PlayerGui")
     local main = pg and pg:FindFirstChild("Main")
-    return main and main:FindFirstChild("Timer")
+    if not main then return nil end
+    -- Một số bản UI đặt Timer sâu hơn một cấp trong Main.
+    return main:FindFirstChild("Timer") or main:FindFirstChild("Timer", true)
 end
 
 local function getRaidLocations()
@@ -4576,19 +4622,36 @@ local function getRaidIsland(index)
     if not locations then return nil end
 
     local name = "Island " .. tostring(index)
-    local isl = locations:FindFirstChild(name) or locations:FindFirstChild(name, true)
-    -- FIX Sea 2: map thường có sẵn các "Island N" tĩnh ở xa. Chỉ nhận đảo Raid thật = đảo nằm gần người chơi
-    -- (map Raid nhỏ gọn); đảo tĩnh ở xa bị bỏ qua nên không làm sai mục tiêu / điều kiện "đã vào map Raid".
-    if isl then
-        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local bestIsland, bestDistance = nil, math.huge
+
+    -- Có thể tồn tại nhiều object cùng tên: Island N tĩnh của thế giới thường và Island N
+    -- trong map Raid. Không dừng ở FindFirstChild đầu tiên; chọn bản gần nhân vật nhất.
+    local function considerIsland(candidate)
+        if not candidate or candidate.Name ~= name then return end
         local okPv, cf = pcall(function()
-            return isl:IsA("BasePart") and isl.CFrame or isl:GetPivot()
+            return candidate:IsA("BasePart") and candidate.CFrame or candidate:GetPivot()
         end)
-        if hrp and okPv and cf and (cf.Position - hrp.Position).Magnitude > 4500 then
-            return nil
+        if not okPv or not cf then return end
+
+        if not hrp then
+            if not bestIsland then bestIsland = candidate end
+            return
+        end
+
+        local distance = (cf.Position - hrp.Position).Magnitude
+        if distance <= 4500 and distance < bestDistance then
+            bestIsland, bestDistance = candidate, distance
         end
     end
-    return isl
+
+    considerIsland(locations:FindFirstChild(name))
+    for _, candidate in ipairs(locations:GetDescendants()) do
+        if candidate.Name == name then
+            considerIsland(candidate)
+        end
+    end
+    return bestIsland
 end
 
 -- FIX Sea 2: Raid chỉ được coi là "đang chạy" khi Timer thật sự hiện, hoặc xuất hiện "Island N" MỚI
@@ -4599,16 +4662,66 @@ local function isRaidActive()
         local timer = getRaidTimer()
         local timerOn = timer ~= nil and timer.Visible == true
 
-        -- Raid vừa hoàn thành: coi như đã kết thúc (kể cả khi đồng hồ còn hiện) cho tới khi đồng hồ tắt
-        -- hoặc script bấm Start raid mới. Nhờ vậy vòng lặp mới được mua chip + Start tiếp.
-        if not timerOn then RAID_FIXED.completed = false end
-        if RAID_FIXED.completed then
+        -- Đồng hồ đang đếm là bằng chứng ưu tiên cao nhất: cờ completed cũ không được
+        -- phép chặn farm khi nhân vật đã load/bật script giữa một Raid đang chạy.
+        if timerOn then
+            RAID_FIXED.completed = false
+            RAID_FIXED.activeReason = "Timer"
+            RAID_FIXED.wasActive = true
+            return true
+        end
+
+        -- Timer đã tắt sau khi dọn đảo cuối: kết thúc phiên Raid hiện tại và bỏ qua
+        -- các island instance còn sót để không nhận nhầm là Raid mới.
+        if RAID_FIXED.awaitingCompletion then
+            RAID_FIXED.awaitingCompletion = false
+            RAID_FIXED.completed = false
             RAID_FIXED.activeReason = nil
             RAID_FIXED.activeSince = nil
             RAID_FIXED.entered = false
+            RAID_FIXED.wasActive = false
+            RAID_FIXED.baseIslands = {}
+            RAID_FIXED.baseReady = false
+            RAID_FIXED.staleSince = nil
+            return false
+        end
+        if RAID_FIXED.completed then
+            RAID_FIXED.completed = false
+            RAID_FIXED.activeReason = nil
+            RAID_FIXED.activeSince = nil
+            RAID_FIXED.entered = false
+            RAID_FIXED.wasActive = false
             return false
         end
         local locations = getRaidLocations()
+
+        -- FIX: nếu script được bật / load khi người chơi ĐÃ Ở TRONG map Raid,
+        -- các đảo có thể bị ghi nhầm vào baseIslands trước khi Raid được nhận diện.
+        -- Khi đó Timer có thể không hiện ở một số thời điểm, khiến Auto Raid không bao giờ farm.
+        -- Xác nhận bằng vị trí thật của người chơi gần đảo Raid 1-5; không phụ thuộc Timer
+        -- hay việc đảo có xuất hiện mới sau lúc script khởi động hay không.
+        if not timerOn and locations then
+            local myHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myHrp then
+                local lobby = getRaidRoomTarget()
+                local atLobby = lobby ~= nil and (lobby.Position - myHrp.Position).Magnitude < 1500
+                if not atLobby then
+                    for i = 1, 5 do
+                        local isl = locations:FindFirstChild("Island " .. i) or locations:FindFirstChild("Island " .. i, true)
+                        local pos
+                        pcall(function()
+                            pos = isl and (isl:IsA("BasePart") and isl.Position or isl:GetPivot().Position)
+                        end)
+                        if pos and (myHrp.Position - pos).Magnitude <= RAID_FIXED.mapRadius then
+                            RAID_FIXED.activeReason = "Đang ở trong map Raid (Island " .. i .. ")"
+                            RAID_FIXED.wasActive = true
+                            RAID_FIXED.entered = true
+                            return true
+                        end
+                    end
+                end
+            end
+        end
 
         if locations and not timerOn and not RAID_FIXED.baseReady then
             for i = 1, 8 do
@@ -4618,12 +4731,6 @@ local function isRaidActive()
                 end
             end
             RAID_FIXED.baseReady = true
-        end
-
-        if timerOn then
-            RAID_FIXED.activeReason = "Timer"
-            RAID_FIXED.wasActive = true
-            return true
         end
 
         if locations then
@@ -5395,6 +5502,22 @@ local function getRaidEnemy(islandIdx)
             end
         end
     end
+
+    -- Dự phòng cho map Raid đang stream/chưa cập nhật đúng Island pivot: nếu timer Raid
+    -- vẫn chạy, người chơi ở ngoài phòng chờ và không tìm thấy quái quanh anchor, nhận
+    -- quái sống ở gần người chơi để không đứng im vì tọa độ đảo bị lệch.
+    if not best and not nearLobby and isRaidActive() then
+        for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+            local enemyHrp = enemy:FindFirstChild("HumanoidRootPart")
+            local hum = enemy:FindFirstChildOfClass("Humanoid")
+            if enemyHrp and hum and hum.Health > 0 then
+                local dist = (enemyHrp.Position - hrp.Position).Magnitude
+                if dist <= 850 and dist < bestDist then
+                    best, bestDist = enemy, dist
+                end
+            end
+        end
+    end
     return best
 end
 
@@ -5533,6 +5656,14 @@ function RAID_FIXED.scan()
 
     local lobby = getRaidRoomTarget()
     local atLobby = lobby ~= nil and (lobby.Position - hrp.Position).Magnitude < 1500
+    local timer = getRaidTimer()
+    local timerOn = timer ~= nil and timer.Visible == true
+
+    -- Khi timer đang chạy và người chơi đã rời phòng chờ, không bắt buộc phải đọc
+    -- được Island 1-5 hoặc phải đứng cạnh quái mới cho phép Auto Raid khởi động.
+    if timerOn and not atLobby then
+        return true, "đồng hồ Raid đang chạy; nhân vật đã rời phòng chờ"
+    end
 
     if not atLobby then
         local folder = workspace:FindFirstChild("Enemies")
@@ -5709,15 +5840,27 @@ local function farmRaidIslands()
             -- điều khiển tự MUA CHIP -> START -> FARM raid kế tiếp. Tắt reset: _G.RaidResetAfter = false
             if not nxt and tick() - clearedSince > 20
                 and curIsland >= (tonumber(RAID_FIXED.finalIsland) or 5) then
-                RAID_FIXED.completed = true
-                RAID_FIXED.lastStatus = "🏁 Raid completed -> quay về phòng chờ, chuẩn bị raid tiếp"
-                raidLog("Raid completed (đảo cuối đã sạch quái)")
-                if _G.RaidResetAfter ~= false then
-                    pcall(function()
-                        local ch = LocalPlayer.Character
-                        local hm = ch and ch:FindFirstChildOfClass("Humanoid")
-                        if hm then hm.Health = 0 end
-                    end)
+                local timer = getRaidTimer()
+                if timer and timer.Visible == true then
+                    -- Raid còn thời gian: tuyệt đối không tự reset/đánh dấu hoàn thành.
+                    -- Dừng vòng farm để supervisor không kéo người chơi ngược về đảo 1;
+                    -- chờ server kết thúc Raid rồi mới mở khóa lượt tiếp theo.
+                    RAID_FIXED.awaitingCompletion = true
+                    RAID_FIXED.completed = false
+                    RAID_FIXED.lastStatus = "Đã dọn đảo cuối — đang chờ server kết thúc Raid..."
+                    raidLog("Đảo cuối trống nhưng timer còn chạy; chờ timer thay vì đánh dấu hoàn thành")
+                else
+                    RAID_FIXED.completed = true
+                    RAID_FIXED.awaitingCompletion = false
+                    RAID_FIXED.lastStatus = "🏁 Raid đã kết thúc — chuẩn bị lượt tiếp theo"
+                    raidLog("Raid timer đã tắt sau khi dọn đảo cuối")
+                    if _G.RaidResetAfter ~= false then
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hm = ch and ch:FindFirstChildOfClass("Humanoid")
+                            if hm then hm.Health = 0 end
+                        end)
+                    end
                 end
                 break
             end
@@ -5731,7 +5874,8 @@ local function farmRaidIslands()
 
             local cf = curIsland > 0 and getPivotPosition(getRaidIsland(curIsland)) or nil
             if cf then
-                local dest = CFrame.new(cf.Position + Vector3.new(0, RAID_FIXED.islandHeight, 0))
+                -- Độ cao đảo Raid dùng chung thanh Farm Height; thay đổi thanh sẽ áp dụng ngay.
+                local dest = CFrame.new(cf.Position + Vector3.new(0, RAID_FIXED.height(), 0))
                 if heldIsland ~= curIsland then
                     RAID_FIXED.currentIsland = curIsland
                     if raidFlyTo(dest, flySpeed, alive) then
@@ -5739,7 +5883,17 @@ local function farmRaidIslands()
                         setRaidHold(dest)
                     end
                 else
-                    RAID_FIXED.lastStatus = "Chờ quái đảo Raid " .. tostring(curIsland)
+                    -- Nếu người dùng kéo thanh độ cao trong lúc đang Raid, cập nhật vị trí treo
+                    -- ngay trên đảo thay vì giữ mãi độ cao cũ.
+                    local liveRoot = getPlayerRoot()
+                    if liveRoot and math.abs(liveRoot.Position.Y - dest.Position.Y) > 2.5 then
+                        RAID_FIXED.lastStatus = "Điều chỉnh độ cao Raid: " .. tostring(math.floor(RAID_FIXED.height()))
+                        if raidFlyTo(dest, flySpeed, alive) then
+                            setRaidHold(dest)
+                        end
+                    else
+                        RAID_FIXED.lastStatus = "Chờ quái đảo Raid " .. tostring(curIsland)
+                    end
                 end
             else
                 RAID_FIXED.lastStatus = "Đang chờ đảo Raid xuất hiện"
@@ -5824,7 +5978,7 @@ _G.MHSpawn(function()
                             RAID_FIXED.lastStatus = "No Special Microchip (bật Auto Buy Chip)"
                         end
                     end
-                elseif farmOn and not RAID_FIXED.running then
+                elseif farmOn and not RAID_FIXED.running and not RAID_FIXED.awaitingCompletion then
                     -- FIX: Raid started nhưng CHỈ farm khi nhân vật đã vào map Raid.
                     -- Chưa vào thì đứng yên chờ server dịch chuyển (không bay / không ghim vị trí).
                     local inMap, dist = isInRaidMap()
@@ -5885,7 +6039,7 @@ _G.MHSpawn(function()
                                 RAID_FIXED.lastStatus = "Chưa vào map Raid -> tự bay tới đảo Raid..."
                                 _G.MHSpawn(function()
                                     pcall(function()
-                                        local dest = CFrame.new(destCF.Position + Vector3.new(0, RAID_FIXED.islandHeight, 0))
+                                        local dest = CFrame.new(destCF.Position + Vector3.new(0, RAID_FIXED.height(), 0))
                                         pcall(function() LocalPlayer:RequestStreamAroundAsync(dest.Position) end)
                                         raidFlyTo(dest, flySpeed, function()
                                             return raidFarmEnabled() and isRaidActive()
@@ -5902,6 +6056,7 @@ _G.MHSpawn(function()
                     RAID_FIXED.session += 1 -- huỷ mọi tiến trình Raid đang chạy
                     RAID_FIXED.running = false
                     RAID_FIXED.starting = false
+                    RAID_FIXED.awaitingCompletion = false
                     RAID_FIXED.stopAura()
                     stopRaidPositionLock()
                     setRaidHold(nil)
@@ -6274,7 +6429,7 @@ local sliderTitle = Instance.new("TextLabel")
 sliderTitle.Size = UDim2.new(0.65, 0, 0, 28)
 sliderTitle.Position = UDim2.new(0, 12, 0, 4)
 sliderTitle.BackgroundTransparency = 1
-sliderTitle.Text = "Farm Height (Flight Altitude)"
+sliderTitle.Text = "Farm / Raid Height (0–100)"
 sliderTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 sliderTitle.TextSize = 12
 sliderTitle.Font = Enum.Font.GothamBold
@@ -8232,6 +8387,17 @@ _G.MHSpawn(function()
                             and pos.Z >= 32500 and pos.Z <= 33800
                     end
 
+                    -- Sea 1: nếu đang ở đảo dưới nước (Underwater City / Fishman Island),
+                    -- ưu tiên bay tới điểm thoát trước khi tìm rương; sau đó tiếp tục Auto Farm Chest.
+                    -- Q.flyToUnderwaterExit tự xử lý bay tới điểm thoát, chạm các part cổng và thời gian chờ.
+                    if World1 and hrp.Position.X > 50000 then
+                        if Q.flyToUnderwaterExit(hrp) then return end
+                        char = LocalPlayer.Character
+                        hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        hum = char and char:FindFirstChildOfClass("Humanoid")
+                        if not hrp or not hum or hum.Health <= 0 then return end
+                    end
+
                     -- Auto Farm Chest hoạt động ở bên ngoài Thuyền Ma.
                     -- Nếu đang ở trong thuyền, thoát qua cửa trong trước cả khi tìm rương.
                     -- Dùng một điểm đích ngoài thuyền để bộ điều phối cổng thực hiện đúng quy trình.
@@ -8243,14 +8409,15 @@ _G.MHSpawn(function()
                         if not hrp or inCursedShip(hrp.Position) then return end
                     end
 
-                    -- tìm rương còn dùng được, gần nhất; bỏ qua rương bên trong Thuyền Ma
-                    -- để không bị đưa vào lại sau khi vừa thoát ra.
+                    -- Tìm rương còn dùng được gần nhất. Bỏ qua rương trong Thuyền Ma và
+                    -- rương thuộc vùng Fishman Island ở Sea 1, để sau khi thoát đảo script farm bên ngoài.
                     local bestChest, bestDist, bestPos
                     for _, chest in ipairs(CollectionService:GetTagged("_ChestTagged")) do
                         local banUntil = blacklist[chest]
                         if chest.Parent and not chest:GetAttribute("IsDisabled") and not (banUntil and tick() < banUntil) then
                             local ok, cf = pcall(function() return chest:GetPivot() end)
-                            if ok and cf and not inCursedShip(cf.Position) then
+                            local inUnderwaterIsland = World1 and cf and cf.Position.X > 50000
+                            if ok and cf and not inCursedShip(cf.Position) and not inUnderwaterIsland then
                                 local d = (cf.Position - hrp.Position).Magnitude
                                 if not bestDist or d < bestDist then
                                     bestChest, bestDist, bestPos = chest, d, cf.Position
@@ -9194,6 +9361,11 @@ do
         print("[Material]", text)
     end
 
+    -- Cố định khu farm Scrap Metal & Leather ở Sea 1: Pirate Village.
+    -- Không lấy điểm spawn Pirate/Brute từ khu vực khác trên toàn map.
+    local PIRATE_VILLAGE_MATERIAL_CENTER = Vector3.new(-1076.60, 27.30, 3960.73)
+    local PIRATE_VILLAGE_MATERIAL_RADIUS = 900
+
     -- "Pirate [Lv. 35]" -> "Pirate"
     local function normalizeMobName(name)
         return (tostring(name):gsub("%s*%[.-%]%s*$", ""))
@@ -9271,12 +9443,26 @@ do
         return hum ~= nil and hum.Health > 0 and enemy:FindFirstChild("HumanoidRootPart") ~= nil
     end
 
+    -- Với Scrap Metal & Leather ở Sea 1, chỉ nhận Pirate/Brute trong vùng Pirate Village.
+    -- Phần kiểm tra khoảng cách ngang tránh đuổi theo mục tiêu ở đảo khác.
+    local function isInsidePirateVillageMaterialArea(enemy)
+        if MatFarm.sea ~= 1 or selectedMaterialTarget ~= "Scrap Metal & Leather" then
+            return true
+        end
+        local root = enemy and enemy:FindFirstChild("HumanoidRootPart")
+        if not root then return false end
+        local delta = root.Position - PIRATE_VILLAGE_MATERIAL_CENTER
+        local horizontalDistance = Vector3.new(delta.X, 0, delta.Z).Magnitude
+        return horizontalDistance <= PIRATE_VILLAGE_MATERIAL_RADIUS
+    end
+
     -- Quái rớt material gần người chơi nhất (giữ nguyên mục tiêu cũ khi còn sống để không đổi qua đổi lại).
     function MatFarm.getEnemy()
         local set = MatFarm.getMobSet()
         if not set then return nil end
 
-        if MatFarm.locked and isAlive(MatFarm.locked) and isMatMob(MatFarm.locked) then
+        if MatFarm.locked and isAlive(MatFarm.locked) and isMatMob(MatFarm.locked)
+            and isInsidePirateVillageMaterialArea(MatFarm.locked) then
             return MatFarm.locked
         end
         MatFarm.locked = nil
@@ -9287,7 +9473,7 @@ do
         local enemiesFolder = workspace:FindFirstChild("Enemies") or workspace
         local best, bestDist = nil, math.huge
         for _, enemy in ipairs(enemiesFolder:GetChildren()) do
-            if isMatMob(enemy) and isAlive(enemy) then
+            if isMatMob(enemy) and isAlive(enemy) and isInsidePirateVillageMaterialArea(enemy) then
                 local d = (enemy.HumanoidRootPart.Position - playerHrp.Position).Magnitude
                 if d < bestDist then
                     bestDist = d
@@ -9306,6 +9492,14 @@ do
         if not set then return {} end
 
         if MatFarm.points and (tick() - MatFarm.pointsAt) < 15 then
+            return MatFarm.points
+        end
+
+        -- Scrap Metal & Leather ở Sea 1 chỉ dùng một điểm chờ tại Pirate Village.
+        -- Tránh vòng lặp đổi giữa nhiều EnemySpawns khiến nhân vật bay khỏi hòn đảo.
+        if MatFarm.sea == 1 and selectedMaterialTarget == "Scrap Metal & Leather" then
+            MatFarm.points = {PIRATE_VILLAGE_MATERIAL_CENTER}
+            MatFarm.pointsAt = tick()
             return MatFarm.points
         end
 
@@ -9376,19 +9570,32 @@ do
             return Q.enterIfNeeded(hrp, targetPos)
         end
 
-        if MatFarm.sea == 1 and targetPos.X > 50000 and hrp.Position.X < 50000 then
-            if Q.flyToFishmanGate(hrp) then return true end   -- bay tới cổng vào trước
-            if tick() - MatFarm.lastEntrance > 6 then
-                MatFarm.lastEntrance = tick()
-                pcall(function()
-                    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-                    local commF = remotes and remotes:FindFirstChild("CommF_")
-                    if commF then
-                        commF:InvokeServer("requestEntrance", Vector3.new(61163.8515625, 5.342342376708252, 1819.7841796875))
-                    end
-                end)
+        if MatFarm.sea == 1 then
+            -- Sea 1: nếu đang ở Underwater City (Fishman Island) nhưng nguyên liệu cần farm
+            -- nằm trên bản đồ mặt đất, phải thoát đảo trước; nếu không, vòng farm sẽ bay thẳng
+            -- tới tọa độ ngoài đảo và dễ bị kéo lệch / kẹt tại Fishman Island.
+            if targetPos.X < 50000 and hrp.Position.X > 50000 then
+                if Q.flyToUnderwaterExit(hrp) then return true end
+                -- Q.flyToUnderwaterExit tự quản lý tween, chạm cổng và thời gian chờ.
+                -- Khi nó trả false, tiếp tục luồng farm bình thường để không khóa Auto Farm Material.
             end
-            return true
+
+            -- Nếu nguyên liệu mục tiêu nằm trong Underwater City mà người chơi còn ở ngoài,
+            -- bay tới cổng vào rồi yêu cầu chuyển khu như trước.
+            if targetPos.X > 50000 and hrp.Position.X < 50000 then
+                if Q.flyToFishmanGate(hrp) then return true end   -- bay tới cổng vào trước
+                if tick() - MatFarm.lastEntrance > 6 then
+                    MatFarm.lastEntrance = tick()
+                    pcall(function()
+                        local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                        local commF = remotes and remotes:FindFirstChild("CommF_")
+                        if commF then
+                            commF:InvokeServer("requestEntrance", Vector3.new(61163.8515625, 5.342342376708252, 1819.7841796875))
+                        end
+                    end)
+                end
+                return true
+            end
         end
         return false
     end
@@ -9473,7 +9680,7 @@ local function getTargetEnemy()
             return bestMob
         end
 
-        local questName, questLevel, questMobName = GetQuestData()
+        local questName, questLevel, questMobName, questNpcPos, questMobPos = GetQuestData()
         local partialEnemy, partialDist = nil, math.huge
 
         -- LỰA CHỌN MỤC TIÊU CHO CAKE PRINCE (ưu tiên quái đúng quest đang nhận)
@@ -9494,7 +9701,13 @@ local function getTargetEnemy()
             local hrp, humanoid = v:FindFirstChild("HumanoidRootPart"), v:FindFirstChild("Humanoid")
             if hrp and humanoid and humanoid.Health > 0 then
                 local isMatchingTarget, mobName = false, string.lower(v.Name)
-                if selectedFarmTarget == "Auto Level" then
+                -- Auto Level chỉ được phép chọn quái trong khu quest hiện tại.
+                -- Điều này chặn tên trùng/khớp một phần như "Pirate Millionaire" kéo người chơi khỏi Pirate Village.
+                local insideQuestArea = true
+                if selectedFarmTarget == "Auto Level" and questMobPos then
+                    insideQuestArea = (hrp.Position - questMobPos).Magnitude <= 2200
+                end
+                if insideQuestArea and selectedFarmTarget == "Auto Level" then
                     local mScore = Q.mobMatches(v.Name, questMobName)
                     if mScore == 2 then
                         isMatchingTarget = true
@@ -11195,7 +11408,7 @@ function FA.resetFlightState()
     submergedTravelBusy = false
     submergedTravelLast = 0
     Q.flyingToGate = false; Q.flyingToExit = false
-    Q.gateArriveAt = nil; Q.exitNearAt = nil
+    Q.gateArriveAt = nil; Q.exitNearAt = nil; Q.exitRequestAt = nil
     Q.skyEntranceWaitUntil = 0; Q.entranceWaitUntil = 0
     Q.NC = nil
     _G.__FlyN = 0
@@ -11600,7 +11813,12 @@ _G.MHSpawn(function()
                         local destinationPos = nil
                         if selectedFarmTarget == "Auto Level" then
                             local qName, qLevel, qMob, qNpcPos, qMobPos = GetQuestData()
-                            destinationPos = GetQuestMobSpawn(qMob, qMobPos) or qMobPos or qNpcPos
+                            local realSpawn = GetQuestMobSpawn(qMob, qMobPos)
+                            -- Chốt điểm bay trong vùng quest hiện tại, fallback về tọa độ đã khai báo nếu dữ liệu spawn lệch.
+                            if realSpawn and qMobPos and (realSpawn - qMobPos).Magnitude > 2200 then
+                                realSpawn = nil
+                            end
+                            destinationPos = realSpawn or qMobPos or qNpcPos
                         elseif selectedFarmTarget == "Cake Prince" then
                             if isCakePrinceReady then
                                 -- Cổng mở: bay tới cổng; tới nơi sẽ liên tục thử chui vào (Q.cakeEnterGate) tới khi boss xuất hiện.
@@ -11735,7 +11953,7 @@ _G.MHSpawn(function()
             -- Không được để vòng lặp này hủy Tween bay tới cổng Underwater City mỗi 0.05 giây.
             -- Chỉ dọn Tween khi không có thao tác mua võ độc lập đang chạy.
             if not autoFarmMaterialEnabled and not autoRaidEnabled and not _G.Dungeon
-                and not _G.BuyMeleeActive then
+                and not autoChestEnabled and not _G.BuyMeleeActive then
                 targetEnemy = nil
                 if currentFlyTween then
                     pcall(function() currentFlyTween:Cancel() end)
@@ -14228,7 +14446,7 @@ task.defer(function()
             if not screenGui.Parent and pg then
                 screenGui.Parent = pg
             end
-            screenGui.Enabled = (_G.MinhHubReady == true)  -- chỉ bật khi loading xong
+            screenGui.Enabled = true  -- bảo đảm menu được hiển thị sau khi toàn bộ script đã chạy đến cuối
         end
         if mainFrame then mainFrame.Visible = true end
         if toggleBtn then toggleBtn.Visible = true end
