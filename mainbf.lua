@@ -2193,16 +2193,58 @@ end)
 --      số lần nhận quest thất bại để lần lượt thử từng NPC.
 Q.npcLearned = Q.npcLearned or {}
 Q.npcListAt, Q.npcList = 0, {}
-function Q.questNpcCandidates()
-    if tick() - Q.npcListAt < 20 and #Q.npcList > 0 then return Q.npcList end
+Q.lastResolvedQuestNpc = nil
+
+-- Khóa riêng cho từng nhiệm vụ: tránh dùng nhầm vị trí NPC của một quest khác
+-- dù hai quest dùng chung QuestName nhưng khác level/mob.
+function Q.makeQuestIdentity(questName, questLevel, mobName)
+    return table.concat({
+        string.lower(tostring(questName or "")),
+        tostring(questLevel or ""),
+        Q.normMob(mobName or "")
+    }, ":")
+end
+
+local function compactNpcName(value)
+    local n = string.lower(tostring(value or ""))
+    n = string.gsub(n, "%s*%[.-%]%s*$", "")
+    n = string.gsub(n, "[^%w]", "")
+    -- Chuẩn hóa các kiểu tên thường gặp: CakeQuest1Giver, HauntedQuestGiver1...
+    n = string.gsub(n, "questgiver%d*$", "")
+    n = string.gsub(n, "giver%d*$", "")
+    n = string.gsub(n, "quest%d+$", "quest")
+    return n
+end
+
+local function isQuestNpcName(value)
+    local n = string.lower(tostring(value or ""))
+    return string.find(n, "quest", 1, true) ~= nil
+        or string.find(n, "giver", 1, true) ~= nil
+        or string.find(n, "adventurer", 1, true) ~= nil
+end
+
+function Q.questNpcCandidates(forceRefresh)
+    if not forceRefresh and tick() - Q.npcListAt < 20 and #Q.npcList > 0 then
+        return Q.npcList
+    end
+
     Q.npcListAt = tick()
     local list = {}
     local folder = workspace:FindFirstChild("NPCs")
     if folder then
         for _, m in ipairs(folder:GetDescendants()) do
-            if m:IsA("Model") and m:FindFirstChildOfClass("Humanoid") and not Players:GetPlayerFromCharacter(m) then
+            if m:IsA("Model") and m:FindFirstChildOfClass("Humanoid")
+                and not Players:GetPlayerFromCharacter(m) then
                 local ok, cf = pcall(function() return m:GetPivot() end)
-                if ok and cf then list[#list + 1] = {name = m.Name, pos = cf.Position} end
+                if ok and cf then
+                    list[#list + 1] = {
+                        model = m,
+                        name = m.Name,
+                        pos = cf.Position,
+                        questLike = isQuestNpcName(m.Name),
+                        compact = compactNpcName(m.Name),
+                    }
+                end
             end
         end
     end
@@ -2210,52 +2252,119 @@ function Q.questNpcCandidates()
     return list
 end
 
-function Q.ResolveQuestNpc(questName, hardPos, mobName)
-    local learned = Q.npcLearned[questName]
-    if learned then return learned end
-    local list = Q.questNpcCandidates()
-    if #list == 0 then return hardPos end
+function Q.ResolveQuestNpc(questName, hardPos, mobName, questLevel)
+    if not hardPos then return nil end
 
-    -- 1) NPC thật nằm sát toạ độ ghi sẵn
-    local best, bd = nil, 60
+    local identity = Q.makeQuestIdentity(questName, questLevel, mobName)
+    local function usePosition(pos, sourceName, saveImmediately)
+        if not pos then return hardPos end
+        Q.lastResolvedQuestNpc = { key = identity, pos = pos, name = sourceName }
+        if saveImmediately then Q.npcLearned[identity] = pos end
+        return pos
+    end
+
+    -- 1) Vị trí từng nhận quest thành công cho đúng quest + level + mob.
+    local learned = Q.npcLearned[identity]
+    if learned and (learned - hardPos).Magnitude <= 2500 then
+        Q.qlog("NPC quest: dùng vị trí đã xác nhận", tostring(questName), tostring(mobName))
+        return usePosition(learned, "learned", false)
+    end
+
+    local list = Q.questNpcCandidates()
+    if #list == 0 then
+        Q.qlog("NPC quest: chưa tải được workspace.NPCs; dùng tọa độ quest đã cấu hình", tostring(questName))
+        return usePosition(hardPos, "quest-data", false)
+    end
+
+    -- 2) Vị trí cấu hình trùng với NPC thật: đây là tín hiệu mạnh nhất.
+    local direct, directDistance = nil, 85
     for _, c in ipairs(list) do
         local d = (c.pos - hardPos).Magnitude
-        if d < bd then best, bd = c, d end
-    end
-    if best and Q.questAttempts < 2 then return best.pos end
-
-    -- 2) Toạ độ lệch (hoặc nhận quest thất bại): dùng NPC gần điểm hồi sinh quái
-    local anchor
-    if mobName then
-        local okS, sp = pcall(GetQuestMobSpawn, mobName, hardPos)
-        if okS then anchor = sp end
-    end
-    anchor = anchor or hardPos
-    local scored = {}
-    for _, c in ipairs(list) do
-        local d = (c.pos - anchor).Magnitude
-        if d <= 1500 then
-            local n = string.lower(c.name)
-            -- ưu tiên tên giống NPC quest, loại bớt NPC cửa hàng/giảng dạy
-            if string.find(n, "quest", 1, true) or string.find(n, "adventurer", 1, true)
-                or string.find(n, "giver", 1, true) or string.find(n, "leader", 1, true) then d = d - 400 end
-            if string.find(n, "dealer", 1, true) or string.find(n, "teacher", 1, true)
-                or string.find(n, "shop", 1, true) or string.find(n, "trainer", 1, true) then d = d + 600 end
-            scored[#scored + 1] = {pos = c.pos, d = d, name = c.name}
+        if d < directDistance then
+            direct, directDistance = c, d
         end
     end
-    if #scored == 0 then return hardPos end
-    table.sort(scored, function(a, b) return a.d < b.d end)
-    local pick = scored[(Q.questAttempts % math.min(#scored, 4)) + 1]
-    Q.qlog("Toạ độ NPC quest có thể đã đổi -> thử NPC:", pick.name, "cho", tostring(questName))
-    return pick.pos
+    if direct then
+        Q.qlog("NPC quest: khớp tọa độ", direct.name, "|", tostring(questName), "| cách", math.floor(directDistance))
+        return usePosition(direct.pos, direct.name, false)
+    end
+
+    -- 3) Tọa độ NPC đã thay đổi: so khớp tên QuestName với tên model NPC trước,
+    -- rồi mới dùng khoảng cách để phân xử. Không xoay vòng qua NPC ngẫu nhiên.
+    local expected = compactNpcName(questName)
+    local named, namedScore = nil, -math.huge
+    for _, c in ipairs(list) do
+        local d = (c.pos - hardPos).Magnitude
+        if d <= 2500 and expected ~= "" and c.compact ~= "" then
+            local affinity = 0
+            if c.compact == expected then
+                affinity = 1200
+            elseif string.find(c.compact, expected, 1, true)
+                or (#c.compact >= 5 and string.find(expected, c.compact, 1, true)) then
+                affinity = 850
+            else
+                local stem = string.gsub(expected, "quest$", "")
+                if #stem >= 4 and string.find(c.compact, stem, 1, true) then
+                    affinity = 520
+                end
+            end
+
+            if affinity > 0 then
+                local score = affinity - d * 0.22
+                if score > namedScore then
+                    named, namedScore = c, score
+                end
+            end
+        end
+    end
+    if named and namedScore >= 250 then
+        Q.qlog("NPC quest: khớp tên NPC", named.name, "|", tostring(questName), "| điểm", math.floor(namedScore))
+        return usePosition(named.pos, named.name, false)
+    end
+
+    -- 4) Dự phòng cho NPC có tên chung như "Quest Giver": chỉ xét NPC có dấu hiệu
+    -- nhận nhiệm vụ và nằm gần khu vực quest/spawn; loại merchant/trainer để tránh chọn nhầm.
+    local anchor = nil
+    if mobName then
+        local okSpawn, spawnPos = pcall(GetQuestMobSpawn, mobName, hardPos)
+        if okSpawn then anchor = spawnPos end
+    end
+    anchor = anchor or hardPos
+
+    local generic, genericScore = nil, -math.huge
+    for _, c in ipairs(list) do
+        local raw = string.lower(tostring(c.name))
+        local merchantLike = string.find(raw, "dealer", 1, true)
+            or string.find(raw, "teacher", 1, true)
+            or string.find(raw, "shop", 1, true)
+            or string.find(raw, "trainer", 1, true)
+        if c.questLike and not merchantLike then
+            local dHard = (c.pos - hardPos).Magnitude
+            local dAnchor = (c.pos - anchor).Magnitude
+            if dHard <= 1400 and dAnchor <= 1600 then
+                local score = 300 - dHard * 0.16 - dAnchor * 0.05
+                if score > genericScore then
+                    generic, genericScore = c, score
+                end
+            end
+        end
+    end
+    if generic and genericScore > 0 then
+        Q.qlog("NPC quest: dự phòng theo khu vực", generic.name, "|", tostring(questName))
+        return usePosition(generic.pos, generic.name, false)
+    end
+
+    -- Không tìm được ứng viên đủ tin cậy thì dùng vị trí dữ liệu gốc; tuyệt đối không
+    -- chọn NPC bất kỳ chỉ vì gần điểm spawn, tránh bay đến NPC shop/đào tạo.
+    Q.qlog("NPC quest: không có ứng viên đáng tin; giữ tọa độ dự phòng", tostring(questName), tostring(mobName))
+    return usePosition(hardPos, "quest-data", false)
 end
 
 local function claimQuestCore(questName, questLevel, mobName, questNpcPos)
     if not questName then return true end
-    questNpcPos = Q.ResolveQuestNpc(questName, questNpcPos, mobName)
+    local key = Q.makeQuestIdentity(questName, questLevel, mobName)
+    questNpcPos = Q.ResolveQuestNpc(questName, questNpcPos, mobName, questLevel)
     Q.currentQuestMobName = mobName
-    local key = tostring(questName) .. ":" .. tostring(questLevel)
 
     -- 1) Đang có quest -> cứ đánh tiếp
     if HasQuest() then
@@ -2335,8 +2444,10 @@ local function claimQuestCore(questName, questLevel, mobName, questNpcPos)
         Q.qlog("Đã nhận quest (thấy GUI), đi farm")
         -- Nhớ vị trí nhận quest thành công để lần sau bay thẳng tới đó (kể cả khi toạ độ ghi sẵn đã lệch)
         pcall(function()
-            local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if h then Q.npcLearned[questName] = h.Position end
+            local resolved = Q.lastResolvedQuestNpc
+            if resolved and resolved.key == key and resolved.pos then
+                Q.npcLearned[key] = resolved.pos
+            end
         end)
         return true
     end
