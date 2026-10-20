@@ -58,6 +58,7 @@ local ReplicatedStorage    = game:GetService("ReplicatedStorage")
 --  * Tự đóng sau 40 giây nếu script bị lỗi giữa chừng (tránh kẹt màn hình)
 -- =========================================================
 _G.MinhHubReady = false
+_G.MinhHubGreeted = false
 _G.MinhHubLoad, _G.MinhHubLoadDone = nil, nil
 do
     local okL = pcall(function()
@@ -267,8 +268,11 @@ do
             UDim2.new(0, 122, 0, 58), UDim2.new(0, 200, 0, 34))
         label(card, "Premium • Blox Fruits", 14, Enum.Font.GothamMedium, ACCENT_L,
             UDim2.new(0, 122, 0, 92), UDim2.new(0, 220, 0, 20))
-        label(card, "Đang chuẩn bị script, vui lòng chờ...", 12, Enum.Font.Gotham, MUTED,
+        local dispName = "bạn"
+        pcall(function() dispName = lp.DisplayName ~= "" and lp.DisplayName or lp.Name end)
+        local welcomeL = label(card, "Xin chào, " .. dispName .. "! Đang chuẩn bị script...", 12, Enum.Font.Gotham, MUTED,
             UDim2.new(0, 122, 0, 114), UDim2.new(0, 260, 0, 18))
+        welcomeL.TextTruncate = Enum.TextTruncate.AtEnd
 
         -- phần trăm lớn bên phải
         local pctL = label(card, "0%", 36, Enum.Font.GothamBlack, Color3.new(1, 1, 1),
@@ -366,8 +370,14 @@ do
             chips[i] = {chip = chip, stroke = cs, dot = cd, lbl = cl, at = st[2], on = false}
         end
 
-        label(card, "Menu sẽ tự mở khi tải xong", 11, Enum.Font.Gotham, MUTED,
+        local hintL = label(card, "Menu sẽ tự mở khi tải xong", 11, Enum.Font.Gotham, MUTED,
             UDim2.new(0, 28, 1, -30), UDim2.new(1, -56, 0, 18), Enum.TextXAlignment.Center)
+        local TIPS = {
+            "💡 Menu sẽ tự mở khi tải xong",
+            "💡 Tab Race V2/V3: tự lấy Mũ Chiến Binh rồi up V2/V3 ở Sea 2",
+            "💡 Dùng Auto Farm Chest khi rảnh để gom Beli và rương",
+            "💡 Nhấn nút Minh Hub để ẩn/hiện menu bất cứ lúc nào",
+        }
 
         local t0 = os.clock()
         local target, shown, closed = 0, 0, false
@@ -387,6 +397,7 @@ do
             tip.Position = UDim2.new(frac, 0, 0.5, 0)
             pctL.Text = string.format("%d%%", math.floor(shown + 0.5))
             timeL.Text = string.format("%.1fs", t)
+            if not _G.MinhHubGreeted then hintL.Text = TIPS[(math.floor(t / 2.2) % #TIPS) + 1] end
             rg.Rotation = (t * 300) % 360
             dot.BackgroundTransparency = 0.5 - 0.5 * math.sin(t * 5)
             for gi, gl in ipairs(glowLayers) do
@@ -414,9 +425,87 @@ do
             end
         end)
 
+        -- Thông báo chào mừng (tự vẽ, không dùng thông báo mặc định của Roblox) trượt vào góc phải dưới
+        local function showWelcomeToast()
+            pcall(function()
+                local tg = Instance.new("ScreenGui")
+                tg.Name = "MinhHubWelcome"
+                tg.ResetOnSpawn = false
+                tg.IgnoreGuiInset = true
+                tg.DisplayOrder = 1000001
+                tg.Parent = parent
+                local W, H = 330, 84
+                local f = Instance.new("Frame")
+                f.AnchorPoint = Vector2.new(1, 1)
+                f.Size = UDim2.new(0, W, 0, H)
+                f.Position = UDim2.new(1, W + 40, 1, -28)   -- bắt đầu ngoài màn hình bên phải
+                f.BackgroundColor3 = Color3.new(1, 1, 1)
+                f.BorderSizePixel = 0
+                f.ClipsDescendants = true
+                f.Parent = tg
+                corner(f, 14)
+                gradient(f, Color3.fromRGB(38, 44, 66), Color3.fromRGB(16, 17, 24), 60)
+                local fs = Instance.new("UIStroke")
+                fs.Color = Color3.new(1, 1, 1)
+                fs.Thickness = 1.6
+                fs.Parent = f
+                gradient(fs, ACCENT_L, Color3.fromRGB(60, 64, 80), 60)
+
+                -- vạch màu bên trái
+                local bar = Instance.new("Frame")
+                bar.Size = UDim2.new(0, 4, 1, 0)
+                bar.BackgroundColor3 = Color3.new(1, 1, 1)
+                bar.BorderSizePixel = 0
+                bar.Parent = f
+                gradient(bar, ACCENT_L, Color3.fromRGB(44, 110, 230), 90)
+
+                -- logo tròn
+                local lg = Instance.new("Frame")
+                lg.Position = UDim2.new(0, 18, 0.5, -24)
+                lg.Size = UDim2.new(0, 48, 0, 48)
+                lg.BackgroundColor3 = SIDEBAR
+                lg.BorderSizePixel = 0
+                lg.Parent = f
+                corner(lg, 24)
+                local lgs = Instance.new("UIStroke")
+                lgs.Color = ACCENT
+                lgs.Thickness = 2
+                lgs.Parent = lg
+                label(lg, "M", 24, Enum.Font.GothamBlack, ACCENT_L, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), Enum.TextXAlignment.Center)
+
+                label(f, "Chúc anh em chơi vui vẻ! 🎉", 16, Enum.Font.GothamBold, Color3.new(1, 1, 1),
+                    UDim2.new(0, 80, 0, 14), UDim2.new(1, -92, 0, 22))
+                local sub = label(f, "Minh Hub đã sẵn sàng • " .. dispName, 12, Enum.Font.Gotham, ACCENT_L,
+                    UDim2.new(0, 80, 0, 38), UDim2.new(1, -92, 0, 18))
+                sub.TextTruncate = Enum.TextTruncate.AtEnd
+
+                -- thanh đếm ngược ở đáy
+                local cd = Instance.new("Frame")
+                cd.AnchorPoint = Vector2.new(0, 1)
+                cd.Position = UDim2.new(0, 0, 1, 0)
+                cd.Size = UDim2.new(1, 0, 0, 3)
+                cd.BackgroundColor3 = Color3.new(1, 1, 1)
+                cd.BorderSizePixel = 0
+                cd.Parent = f
+                gradient(cd, Color3.fromRGB(44, 110, 230), ACCENT_L, 0)
+
+                Real:Create(f, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+                    {Position = UDim2.new(1, -24, 1, -28)}):Play()
+                Real:Create(cd, TweenInfo.new(5, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 3)}):Play()
+                task.delay(5.2, function()
+                    pcall(function()
+                        Real:Create(f, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                            {Position = UDim2.new(1, W + 40, 1, -28)}):Play()
+                        task.delay(0.6, function() pcall(function() tg:Destroy() end) end)
+                    end)
+                end)
+            end)
+        end
+
         local function close()
             if closed then return end
             closed = true
+            showWelcomeToast()
             _G.MinhHubReady = true
             pcall(function() if _G.MinhHubMenuGui then _G.MinhHubMenuGui.Enabled = true end end)  -- hiện menu khi loading đóng
             pcall(function() if conn then conn:Disconnect() end end)
@@ -449,8 +538,15 @@ do
         _G.MinhHubLoadDone = function()
             if closed then return end
             target = 100
-            step.Text = "Complete!"
-            task.delay(1.2, close)
+            _G.MinhHubGreeted = true
+            step.Text = "Hoàn tất!"
+            step.TextColor3 = ACCENT_L
+            hintL.Text = "🎉 Chúc anh em chơi vui vẻ!"
+            hintL.TextColor3 = Color3.new(1, 1, 1)
+            hintL.Font = Enum.Font.GothamBold
+            hintL.TextSize = 14
+            welcomeL.Text = "Tải xong, mở menu..."
+            task.delay(1.6, close)
         end
 
         -- phòng khi script lỗi giữa chừng: tự đóng, không kẹt màn hình
@@ -810,8 +906,8 @@ local autoBuyChipEnabled    = false
 local autoStartRaidEnabled  = false
 local selectedRaidChip      = "Flame"
 
-local farmDistanceHeight    = 35  
-local flySpeed              = 190
+local farmDistanceHeight    = 35
+local flySpeed              = 190 -- tốc độ bay mặc định 190 studs/giây
 local bringRadius           = 250
 local selectedWeapon        = "Melee"
 local weaponTypes           = {"Melee", "Sword", "Blox Fruit", "Gun"}
@@ -1573,11 +1669,74 @@ function Q.submergedViaDialog(worker)
     return clickedAny
 end
 
+-- Nhận diện Thuyền Ma dùng chung cho Auto Level, Boss, Material và các luồng di chuyển.
+-- Vùng được nới rộng để không đổi phía cổng khi NPC di chuyển/đứng sát mép thân tàu.
+Q.CURSED_SHIP_CONFIRM_SECONDS = 0.55
+Q.CursedShipTargetSideStates = Q.CursedShipTargetSideStates or {}
+
+function Q.isCursedShipPosition(pos)
+    return pos ~= nil
+        and pos.X >= 500 and pos.X <= 1700
+        and pos.Z >= 32200 and pos.Z <= 34100
+end
+
+-- Trả về side ổn định và cờ pending. Khi mục tiêu vừa đổi phía, phải thấy vị trí mới
+-- ổn định đủ 0,55 giây; trong thời gian xác nhận, caller phải đợi thay vì tự bay thẳng.
+function Q.getStableCursedShipTargetSide(pos, sourceKey, forceInside)
+    -- Cursed Captain là boss thuộc Thuyền Ma kể cả khi HRP tạm lệch khỏi vùng tọa độ.
+    local rawInside = forceInside == true or Q.isCursedShipPosition(pos)
+    local key = tostring(sourceKey or "default")
+    local now = tick()
+    local states = Q.CursedShipTargetSideStates
+    local state = states[key]
+
+    if not state then
+        -- Lần đầu quan sát cũng cần xác nhận, tránh một tọa độ NPC vừa stream sai làm chọn cổng ngay.
+        state = {stable = nil, candidate = rawInside, candidateSince = now}
+        states[key] = state
+        return rawInside, true
+    end
+
+    if state.stable == nil then
+        if rawInside ~= state.candidate then
+            state.candidate = rawInside
+            state.candidateSince = now
+        end
+        if now - (state.candidateSince or now) >= Q.CURSED_SHIP_CONFIRM_SECONDS then
+            state.stable = rawInside
+            state.candidate = rawInside
+            state.candidateSince = now
+            return state.stable, false
+        end
+        return rawInside, true
+    end
+
+    if rawInside == state.stable then
+        state.candidate = rawInside
+        state.candidateSince = now
+        return state.stable, false
+    end
+
+    if state.candidate ~= rawInside then
+        state.candidate = rawInside
+        state.candidateSince = now
+    end
+
+    if now - (state.candidateSince or now) >= Q.CURSED_SHIP_CONFIRM_SECONDS then
+        state.stable = rawInside
+        state.candidate = rawInside
+        state.candidateSince = now
+        return state.stable, false
+    end
+
+    return state.stable, true
+end
+
 -- Fishman Island (Sea 1), Cursed Ship (Sea 2) và Submerged Island (Sea 3)
 -- cần bước vào bằng remote đặc biệt. Với Submerged Island, script tự
 -- tới khu Submarine Worker ở Tiki Outpost rồi gọi "TravelToSubmergedIsland"
 -- (tương đương bấm Yes trong hộp thoại).
-function Q.enterIfNeeded(hrp, pos)
+function Q.enterIfNeeded(hrp, pos, sourceKey, targetName)
     if not hrp or not pos then return false end
 
     -- =========================================================
@@ -1596,18 +1755,19 @@ function Q.enterIfNeeded(hrp, pos)
         -- Điểm cửa thoát BÊN TRONG Thuyền Ma (do người dùng cung cấp): phải bay tới đây trước rồi mới requestEntrance để ra ngoài.
         local shipExitAnchor = Vector3.new(922.90, 128.40, 32841.96)
 
-        local function isCursedShipPosition(p)
-            return p ~= nil
-                and p.X >= 650 and p.X <= 1600
-                and p.Z >= 32500 and p.Z <= 33800
-        end
-
-        local targetInShip = isCursedShipPosition(pos)
-        local playerInShip = isCursedShipPosition(hrp.Position)
+        local forceShipTarget = string.find(string.lower(tostring(targetName or "")), "cursed captain", 1, true) ~= nil
+        local targetInShip, targetSidePending = Q.getStableCursedShipTargetSide(pos, sourceKey, forceShipTarget)
+        local playerInShip = Q.isCursedShipPosition(hrp.Position)
         Q.CursedShipTransit = Q.CursedShipTransit or {
             phase = "idle", direction = nil, nextAttemptAt = 0, attempts = 0
         }
         local transit = Q.CursedShipTransit
+
+        -- Vị trí mục tiêu vừa đổi phía: chờ xác nhận 0,55 giây, không gọi cổng và không bay xuyên map.
+        if targetSidePending then
+            transit.phase = "confirming-target-side"
+            return true
+        end
 
         -- Nếu người chơi và mục tiêu cùng phía cổng thì không can thiệp đường bay.
         if targetInShip == playerInShip then
@@ -1756,7 +1916,7 @@ function Q.enterIfNeeded(hrp, pos)
                 task.wait(0.15)
                 local liveChar = LocalPlayer.Character
                 local liveRoot = liveChar and liveChar:FindFirstChild("HumanoidRootPart")
-                if liveRoot and isCursedShipPosition(liveRoot.Position) == targetInShip then
+                if liveRoot and Q.isCursedShipPosition(liveRoot.Position) == targetInShip then
                     hrp = liveRoot
                     reachedExpectedSide = true
                     break
@@ -2404,7 +2564,7 @@ local function claimQuestCore(questName, questLevel, mobName, questNpcPos)
 
     -- Sea 3 Submerged phải xử lý bước NPC trước; không phụ thuộc CommF_
     -- vì Auto Level cần vào đảo trước khi nhận quest ở dưới nước.
-    if Q.enterIfNeeded(hrp, questNpcPos) then return false end
+    if Q.enterIfNeeded(hrp, questNpcPos, "quest") then return false end
 
     local commF = getCommF()
     if not commF then return true end
@@ -4381,7 +4541,7 @@ local RAID_FIXED = {
     arrivalDistance = 7,
     detectorWaitTimeout = 10,
     clickRetries = 4,
-    islandHeight = 60,
+    islandHeight = 35, -- fallback; vị trí farm thực tế đọc RAID_FIXED.height()
     lockHeight = 35,   -- bằng độ cao farm thường để Fast Attack luôn trong tầm đánh
     session = 0,
     running = false,
@@ -4428,9 +4588,10 @@ _G.MHRaidFixed = RAID_FIXED
 
 -- Độ cao đứng trên quái khi Raid: THEO thanh "Độ cao Farm" (trước đây cố định 35, kéo thanh không có tác dụng)
 function RAID_FIXED.height()
+    -- Đọc trực tiếp giá trị thanh Farm Height; cho phép đặt 0 để farm sát mục tiêu.
     local h = tonumber(farmDistanceHeight)
-    if not h or h <= 0 then h = tonumber(RAID_FIXED.lockHeight) or 35 end
-    return h
+    if h == nil then h = tonumber(RAID_FIXED.lockHeight) or 35 end
+    return math.clamp(h, 0, 100)
 end
 
 
@@ -4897,9 +5058,7 @@ local function raidFlyTo(targetCFrame, speed, keepGoing)
     -- Dùng chung bộ điều phối cổng Q.enterIfNeeded (bay tới cổng + requestEntrance) để THOÁT thuyền trước.
     if World2 and Q and Q.enterIfNeeded then
         local function inCursedShip(pos)
-            return pos ~= nil
-                and pos.X >= 650 and pos.X <= 1600
-                and pos.Z >= 32500 and pos.Z <= 33800
+            return Q.isCursedShipPosition(pos)
         end
         local targetInShip = inCursedShip(targetCFrame.Position)
         local deadline = tick() + 45
@@ -4909,7 +5068,7 @@ local function raidFlyTo(targetCFrame, speed, keepGoing)
             if not root then return false end
             if inCursedShip(root.Position) == targetInShip then break end
 
-            local okT, busy = pcall(Q.enterIfNeeded, root, targetCFrame.Position)
+            local okT, busy = pcall(Q.enterIfNeeded, root, targetCFrame.Position, "raid")
             if not okT then
                 RAID_FIXED.lastStatus = "Lỗi khi qua cổng Thuyền Ma: " .. tostring(busy)
                 return false
@@ -4927,7 +5086,7 @@ local function raidFlyTo(targetCFrame, speed, keepGoing)
     end
 
     -- Raid flight dùng cùng tốc độ Farm (đọc flySpeed tại thời điểm bay).
-    local spd = math.max(60, tonumber(speed or flySpeed or 190) or 190)
+    local spd = math.clamp(tonumber(speed or flySpeed) or 190, 60, 350)
 
     setRaidNoclip(true)
     setRaidHold(nil) -- thôi giữ vị trí cũ để không tranh quyền với Tween
@@ -5918,7 +6077,7 @@ local function farmRaidIslands()
 
             local cf = curIsland > 0 and getPivotPosition(getRaidIsland(curIsland)) or nil
             if cf then
-                local dest = CFrame.new(cf.Position + Vector3.new(0, RAID_FIXED.islandHeight, 0))
+                local dest = CFrame.new(cf.Position + Vector3.new(0, RAID_FIXED.height(), 0))
                 if heldIsland ~= curIsland then
                     RAID_FIXED.currentIsland = curIsland
                     if raidFlyTo(dest, flySpeed, alive) then
@@ -6091,7 +6250,7 @@ _G.MHSpawn(function()
                                 RAID_FIXED.lastStatus = "Chưa vào map Raid -> tự bay tới đảo Raid..."
                                 _G.MHSpawn(function()
                                     pcall(function()
-                                        local dest = CFrame.new(destCF.Position + Vector3.new(0, RAID_FIXED.islandHeight, 0))
+                                        local dest = CFrame.new(destCF.Position + Vector3.new(0, RAID_FIXED.height(), 0))
                                         pcall(function() LocalPlayer:RequestStreamAroundAsync(dest.Position) end)
                                         raidFlyTo(dest, flySpeed, function()
                                             return raidFarmEnabled() and isRaidActive()
@@ -6510,7 +6669,7 @@ sliderTrack.Parent = heightSliderCard
 addCorner(sliderTrack, 4)
 
 local sliderFill = Instance.new("Frame")
-sliderFill.Size = UDim2.new(farmDistanceHeight / 100, 0, 1, 0)
+sliderFill.Size = UDim2.new(math.clamp(tonumber(farmDistanceHeight) or 35, 0, 100) / 100, 0, 1, 0)
 sliderFill.BackgroundColor3 = BANANA_YELLOW
 sliderFill.BorderSizePixel = 0
 sliderFill.Parent = sliderTrack
@@ -8050,7 +8209,7 @@ _G.MHSpawn(function()
         repeat
             local ok, why = purchaseConfirmed(beliBefore, snapBefore)
             if ok then return true, why end
-            task.wait(0.25)
+            task.wait(0.1)
         until tick() >= deadline
         return false
     end
@@ -8064,11 +8223,11 @@ _G.MHSpawn(function()
         if commF then
             local okC, resC = invoke(commF, "Cousin", "Check")
             notes[#notes + 1] = "Check=" .. (okC and describe(resC) or "lỗi")
-            task.wait(0.3)
+            task.wait(0.05)
             local okB, resB = invoke(commF, "Cousin", "Buy")
             notes[#notes + 1] = "Buy=" .. (okB and describe(resB) or tostring(resB))
             setStatus("Remote:", table.concat(notes, " | "))
-            local ok, why = waitConfirm(beliBefore, snapBefore, 4)
+            local ok, why = waitConfirm(beliBefore, snapBefore, 2.5)
             if ok then return "success", why end
         else
             notes[#notes + 1] = "không thấy CommF_"
@@ -8082,7 +8241,7 @@ _G.MHSpawn(function()
             local okN, resN = invoke(gachaRF, {Context = "Purchase", BoxName = "ZiolesGacha"})
             notes[#notes + 1] = "Net=" .. (okN and describe(resN) or tostring(resN))
             setStatus("Remote:", table.concat(notes, " | "))
-            local ok, why = waitConfirm(beliBefore, snapBefore, 4)
+            local ok, why = waitConfirm(beliBefore, snapBefore, 2.5)
             if ok then return "success", why end
         end
 
@@ -8111,14 +8270,39 @@ _G.MHSpawn(function()
         return (string.gsub(string.lower(t), "<[^>]->", "")) -- bỏ thẻ rich text
     end
 
+    -- Cache nút giao diện: PlayerGui có thể chứa hàng nghìn descendant, không quét lại toàn bộ mỗi vòng.
+    local buttonCache = {}
+    local cachedPlayerGui = nil
+    local buttonAddedConn, buttonRemovingConn
+
+    local function isClickButton(obj)
+        return obj and (obj:IsA("TextButton") or obj:IsA("ImageButton"))
+    end
+
     local function visibleButtons()
-        local out = {}
         local pg = LocalPlayer:FindFirstChild("PlayerGui")
-        if not pg then return out end
-        for _, d in ipairs(pg:GetDescendants()) do
-            if (d:IsA("TextButton") or d:IsA("ImageButton")) and guiVisible(d, pg)
-                and d.AbsoluteSize.X > 4 and d.AbsoluteSize.Y > 4 then
-                out[#out + 1] = d
+        if not pg then return {} end
+
+        if pg ~= cachedPlayerGui then
+            pcall(function() if buttonAddedConn then buttonAddedConn:Disconnect() end end)
+            pcall(function() if buttonRemovingConn then buttonRemovingConn:Disconnect() end end)
+            cachedPlayerGui = pg
+            buttonCache = {}
+            for _, d in ipairs(pg:GetDescendants()) do
+                if isClickButton(d) then buttonCache[d] = true end
+            end
+            buttonAddedConn = pg.DescendantAdded:Connect(function(d)
+                if isClickButton(d) then buttonCache[d] = true end
+            end)
+            buttonRemovingConn = pg.DescendantRemoving:Connect(function(d)
+                if isClickButton(d) then buttonCache[d] = nil end
+            end)
+        end
+
+        local out = {}
+        for b in pairs(buttonCache) do
+            if b.Parent and guiVisible(b, pg) and b.AbsoluteSize.X > 4 and b.AbsoluteSize.Y > 4 then
+                out[#out + 1] = b
             end
         end
         return out
@@ -8165,17 +8349,32 @@ _G.MHSpawn(function()
         return ok and "mouse" or nil
     end
 
-    local function isPurchaseButton(b)
+    local function isPurchaseButton(b, cachedText)
         if string.lower(b.Name) == "purchasebutton" then return true end
-        local t = textOf(b)
+        local t = cachedText or textOf(b)
         return string.match(t, "^%s*%$%s*[%d,%.]+%s*$") ~= nil -- "$444,850"
     end
 
-    local function isRandomOption(b)
-        local t = textOf(b)
+    local function isRandomOption(b, cachedText)
+        local t = cachedText or textOf(b)
         if string.find(t, "nevermind", 1, true) or string.find(t, "never mind", 1, true) then return false end
         return string.find(t, "random", 1, true) ~= nil or string.find(t, "gacha", 1, true) ~= nil
             or string.find(t, "ngẫu nhiên", 1, true) ~= nil or string.find(t, "ngau nhien", 1, true) ~= nil
+    end
+
+    -- Quét danh sách nút cache đúng một lần mỗi vòng; luôn ưu tiên nút mua nếu nó đã xuất hiện.
+    local function findRandomFlowButtons()
+        local purchase, option = nil, nil
+        for _, b in ipairs(visibleButtons()) do
+            local t = textOf(b)
+            if isPurchaseButton(b, t) then
+                purchase = b
+                break
+            elseif not option and isRandomOption(b, t) then
+                option = b
+            end
+        end
+        return purchase, option
     end
 
     local function isCloseButton(b)
@@ -8222,6 +8421,9 @@ _G.MHSpawn(function()
         if hum then
             local dn = string.lower(hum.DisplayName or "")
             if string.find(dn, "gacha", 1, true) or string.find(dn, "zioles", 1, true) then return true end
+        else
+            -- Không có Humanoid và tên không gợi ý NPC thì bỏ qua để tránh quét sâu model không liên quan.
+            return false
         end
         for _, d in ipairs(model:GetDescendants()) do
             if d:IsA("TextLabel") then
@@ -8232,7 +8434,12 @@ _G.MHSpawn(function()
         return false
     end
 
+    local cachedGachaNPC, cachedGachaAt = nil, 0
     local function findGachaNPC()
+        if cachedGachaNPC and cachedGachaNPC.Parent and tick() - cachedGachaAt < 8 then
+            return cachedGachaNPC
+        end
+        cachedGachaNPC = nil
         local function scan(root)
             if not root then return nil end
             for _, d in ipairs(root:GetChildren()) do
@@ -8241,14 +8448,17 @@ _G.MHSpawn(function()
             return nil
         end
         local found = scan(workspace:FindFirstChild("NPCs"))
-        if found then return found end
+        if found then cachedGachaNPC, cachedGachaAt = found, tick(); return found end
         found = scan(workspace)
-        if found then return found end
+        if found then cachedGachaNPC, cachedGachaAt = found, tick(); return found end
         -- quét sâu (chỉ khi cần): mọi Model có Humanoid không thuộc người chơi
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("Humanoid") then
                 local m = d.Parent
-                if m and m:IsA("Model") and not Players:GetPlayerFromCharacter(m) and npcMatches(m) then return m end
+                if m and m:IsA("Model") and not Players:GetPlayerFromCharacter(m) and npcMatches(m) then
+                    cachedGachaNPC, cachedGachaAt = m, tick()
+                    return m
+                end
             end
         end
         return nil
@@ -8271,9 +8481,9 @@ _G.MHSpawn(function()
                 local area = NPC_AREA[seaIndex]
                 if area then
                     setStatus("Chưa thấy NPC - bay tới khu vực Zioles (Sea " .. seaIndex .. ")...")
-                    flyStraight(function() return area + Vector3.new(0, 25, 0) end, math.max(flySpeed or 190, 250), wanted, 15)
+                    flyStraight(function() return area + Vector3.new(0, 25, 0) end, math.max(flySpeed or 190, 420), wanted, 15)
                     for _ = 1, 6 do
-                        task.wait(0.5)
+                        task.wait(0.25)
                         npc = findGachaNPC()
                         if npc then break end
                     end
@@ -8291,11 +8501,11 @@ _G.MHSpawn(function()
             local arrived = flyStraight(function()
                 local p = npcPos()
                 return p and (p + Vector3.new(3, 0.5, 0)) or nil
-            end, math.max(flySpeed or 190, 250), wanted, 2.5)
+            end, math.max(flySpeed or 190, 420), wanted, 2.5)
             if not wanted() then detail = "Đã tắt"; return end
             if not arrived then detail = "Không bay tới được NPC"; return end
 
-            task.wait(0.4)
+            task.wait(0.2)
             for _, d in ipairs(npc:GetDescendants()) do
                 if d:IsA("ProximityPrompt") and typeof(fireproximityprompt) == "function" then
                     pcall(fireproximityprompt, d)
@@ -8305,10 +8515,10 @@ _G.MHSpawn(function()
             end
 
             -- 3) Hộp thoại -> "Random Fruit" -> nút giá tiền
-            local deadline = tick() + 25
+            local deadline = tick() + 14
             local clickedPurchase, lastOptClick = false, 0
             while tick() < deadline and wanted() do
-                local buy = findButton(isPurchaseButton)
+                local buy, opt = findRandomFlowButtons()
                 if buy then
                     setStatus("Bấm nút mua trong Gacha Box (" .. textOf(buy) .. ")...")
                     local how = clickButton(buy)
@@ -8316,8 +8526,7 @@ _G.MHSpawn(function()
                     break
                 end
 
-                local opt = findButton(isRandomOption)
-                if opt and tick() - lastOptClick > 1.5 then
+                if opt and tick() - lastOptClick > 0.6 then
                     setStatus("Chọn 'Random Fruit' trong hội thoại...")
                     clickButton(opt)
                     lastOptClick = tick()
@@ -8326,36 +8535,37 @@ _G.MHSpawn(function()
                     local p, r = npcPos(), LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                     if p and r and (r.Position - p).Magnitude > 8 then r.CFrame = CFrame.new(p + Vector3.new(3, 0.5, 0)) end
                 end
-                task.wait(0.4)
+                task.wait(0.12)
             end
 
             if not clickedPurchase then
                 local talk = dialogueText()
                 local btns = listButtons()
                 result = "wait"
-                detail = "Không thấy nút mua sau 25s."
+                detail = "Không thấy nút mua sau 14s."
                     .. (talk and (" Zioles nói: \"" .. string.sub(talk, 1, 90) .. "\"") or "")
                     .. (btns ~= "" and (" Nút đang hiện: " .. btns) or "")
                 return
             end
 
             -- 4) Chờ kết quả (có hoạt ảnh quay hộp)
-            local ok, why = waitConfirm(beliBefore, snapBefore, 10)
+            local ok, why = waitConfirm(beliBefore, snapBefore, 6.5)
             if ok then
                 result, detail = "success", why
             else
                 -- Nút vẫn còn -> bấm lại 1 lần bằng cách còn lại
                 local again = findButton(isPurchaseButton)
                 if again then
+                    task.wait(0.25)
                     clickButton(again)
-                    ok, why = waitConfirm(beliBefore, snapBefore, 8)
+                    ok, why = waitConfirm(beliBefore, snapBefore, 4.5)
                 end
                 if ok then result, detail = "success", why
                 else result, detail = "unconfirmed", "Đã bấm mua nhưng chưa thấy trái/Beli đổi (cần Lv50+, đủ tiền, cách lần mua trước ≥ 2 giờ)" end
             end
 
             -- 5) Đóng cửa sổ Gacha Box
-            task.wait(1.5)
+            task.wait(0.25)
             local close = findButton(isCloseButton)
             if close then clickButton(close) end
         end)
@@ -8376,12 +8586,15 @@ _G.MHSpawn(function()
             or not Q.SmartController.canRun("fruit")
     end
 
-    while task.wait(1) do
+    while task.wait(0.25) do
         if autoRandomFruitEnabled then
             if not wasEnabled then
                 wasEnabled = true
-                nextBuyAt = 0
-                setStatus("ENABLED - preparing to purchase...")
+                if tick() < nextBuyAt then
+                    setStatus("⏳ Đang cooldown, còn khoảng " .. math.ceil(nextBuyAt - tick()) .. " giây")
+                else
+                    setStatus("ENABLED - preparing to purchase...")
+                end
             end
 
             if tick() >= nextBuyAt and not raidBusy() then
@@ -8433,9 +8646,7 @@ _G.MHSpawn(function()
                     if _G.FruitPickupBusy or _G.PirateRaidBusy then return end -- nhường cho Auto Pickup Fruit / Pirate Raid
 
                     local function inCursedShip(pos)
-                        return World2 and pos ~= nil
-                            and pos.X >= 650 and pos.X <= 1600
-                            and pos.Z >= 32500 and pos.Z <= 33800
+                        return World2 and Q.isCursedShipPosition(pos)
                     end
 
                     -- Auto Farm Chest hoạt động ở bên ngoài Thuyền Ma.
@@ -8443,7 +8654,7 @@ _G.MHSpawn(function()
                     -- Dùng một điểm đích ngoài thuyền để bộ điều phối cổng thực hiện đúng quy trình.
                     if inCursedShip(hrp.Position) then
                         local outsideAnchor = Vector3.new(-6500.94, 87.60, -123.19)
-                        if Q.enterIfNeeded(hrp, outsideAnchor) then return end
+                        if Q.enterIfNeeded(hrp, outsideAnchor, "chest") then return end
                         char = LocalPlayer.Character
                         hrp = char and char:FindFirstChild("HumanoidRootPart")
                         if not hrp or inCursedShip(hrp.Position) then return end
@@ -8467,7 +8678,7 @@ _G.MHSpawn(function()
                     if not bestChest then return end
 
                     -- Thùng rương ở Thuyền Ma (hoặc ở ngoài thuyền) dùng cùng bộ điều phối cổng.
-                    if Q.enterIfNeeded(hrp, bestPos) then return end
+                    if Q.enterIfNeeded(hrp, bestPos, "chest") then return end
 
                     -- bay tới rương rồi chạm vào để nhặt
                     flyTo(CFrame.new(bestPos + Vector3.new(0, 3, 0)), nil, function()
@@ -8560,7 +8771,7 @@ _G.MHSpawn(function()
         -- trả về trạng thái TRANSIT để vòng nhặt không tính nhầm là lần nhặt thất bại.
         do
             local rootForTransit = getRoot()
-            if World2 and rootForTransit and Q.enterIfNeeded(rootForTransit, handle.Position) then
+            if World2 and rootForTransit and Q.enterIfNeeded(rootForTransit, handle.Position, "fruit") then
                 fruitLog("Đang chuyển qua cổng Thuyền Ma; sẽ thử nhặt lại sau khi tới nơi")
                 return false, "TRANSIT"
             end
@@ -9606,7 +9817,7 @@ do
 
         -- Sea 2 material farming shares the same Cursed Ship entrance coordinator.
         if World2 then
-            return Q.enterIfNeeded(hrp, targetPos)
+            return Q.enterIfNeeded(hrp, targetPos, "material")
         end
 
         if MatFarm.sea == 1 and targetPos.X > 50000 and hrp.Position.X < 50000 then
@@ -11787,8 +11998,17 @@ _G.MHSpawn(function()
                             Q.BonesFarm.setStatus("Đang tìm quái / đến điểm hồi sinh")
                         end
                     end
+
+                    -- Từ level 1350, Auto Level đã rời khu ShipQuest. Bỏ qua NPC Thuyền Ma
+                    -- còn lưu/stream trên client để chúng không kéo nhân vật quay lại qua cổng.
+                    if selectedFarmTarget == "Auto Level" and World2 and getLevel() >= 1350
+                        and enemy and enemy:FindFirstChild("HumanoidRootPart")
+                        and Q.isCursedShipPosition(enemy.HumanoidRootPart.Position) then
+                        enemy = nil
+                    end
+
                     local heightOffset = FA.hoverH()
-                    if enemy and enemy:FindFirstChild("HumanoidRootPart") and Q.enterIfNeeded(hrp, enemy.HumanoidRootPart.Position) then return end
+                    if enemy and enemy:FindFirstChild("HumanoidRootPart") and Q.enterIfNeeded(hrp, enemy.HumanoidRootPart.Position, "main-farm", enemy.Name) then return end
                     
                     if enemy and enemy:FindFirstChild("HumanoidRootPart") then
                         local enemyHrp = enemy.HumanoidRootPart
@@ -11851,74 +12071,10 @@ _G.MHSpawn(function()
                             destinationPos = GetQuestMobSpawn(selectedBossTarget, bossSpawnLocations[selectedBossTarget]) or bossSpawnLocations[selectedBossTarget]
                         end
 
-                        -- Chuyển khỏi Thuyền Ma khi Auto Level đã sang nhiệm vụ cấp 1350+.
-                        -- Lưu ý: waypoint người dùng yêu cầu nằm trong vùng tọa độ Thuyền Ma,
-                        -- nên sau khi thoát ra sẽ bay tới waypoint một lần rồi bỏ qua cổng
-                        -- trong lúc rời vùng này, tránh vòng lặp vào/ra liên tục.
-                        local cursedShipWaypoint = Vector3.new(922.21, 125.09, 32881.34)
-                        local function isInsideCursedShipRoute(pos)
-                            return pos ~= nil
-                                and pos.X >= 650 and pos.X <= 1600
-                                and pos.Z >= 32500 and pos.Z <= 33800
-                        end
-
-                        local shipRoute = Q.CursedShipPostLevelRoute
-                        if not shipRoute
-                            and selectedFarmTarget == "Auto Level"
-                            and World2
-                            and getLevel() >= 1350
-                            and destinationPos
-                            and isInsideCursedShipRoute(hrp.Position)
-                            and not isInsideCursedShipRoute(destinationPos) then
-                            Q.CursedShipPostLevelRoute = "exit"
-                            shipRoute = "exit"
-                            Q.qlog("Thuyền Ma: hoàn tất khu farm, chuẩn bị thoát rồi bay tới waypoint", cursedShipWaypoint)
-                        end
-
-                        if shipRoute == "exit" then
-                            if isInsideCursedShipRoute(hrp.Position) then
-                                if Q.enterIfNeeded(hrp, destinationPos) then return end
-                                character = LocalPlayer.Character
-                                hrp = character and character:FindFirstChild("HumanoidRootPart")
-                                if not hrp or isInsideCursedShipRoute(hrp.Position) then return end
-                            end
-                            Q.CursedShipPostLevelRoute = "waypoint"
-                            shipRoute = "waypoint"
-                        end
-
-                        if shipRoute == "waypoint" then
-                            character = LocalPlayer.Character
-                            hrp = character and character:FindFirstChild("HumanoidRootPart")
-                            if not hrp then return end
-                            if (hrp.Position - cursedShipWaypoint).Magnitude > 25 then
-                                flyTo(CFrame.new(cursedShipWaypoint), math.max(flySpeed or 190, 600), function()
-                                    local liveChar = LocalPlayer.Character
-                                    local liveRoot = liveChar and liveChar:FindFirstChild("HumanoidRootPart")
-                                    return autoFarmEnabled
-                                        and Q.CursedShipPostLevelRoute == "waypoint"
-                                        and liveRoot ~= nil
-                                end)
-                            end
-                            character = LocalPlayer.Character
-                            hrp = character and character:FindFirstChild("HumanoidRootPart")
-                            if hrp and (hrp.Position - cursedShipWaypoint).Magnitude <= 25 then
-                                Q.CursedShipPostLevelRoute = "bypass"
-                                Q.qlog("Thuyền Ma: đã tới waypoint, tiếp tục farm mục tiêu cấp độ kế tiếp", cursedShipWaypoint)
-                            end
-                            return
-                        end
-
-                        local skipCursedShipTransit = false
-                        if shipRoute == "bypass" then
-                            if isInsideCursedShipRoute(hrp.Position) then
-                                -- Cho phép tween rời Thuyền Ma về khu farm kế tiếp mà không gọi cổng lần nữa.
-                                skipCursedShipTransit = true
-                            else
-                                Q.CursedShipPostLevelRoute = nil
-                            end
-                        end
-
-                        if destinationPos and not skipCursedShipTransit and Q.enterIfNeeded(hrp, destinationPos) then return end
+                        -- Chuyển cổng Thuyền Ma do Q.enterIfNeeded xử lý tập trung.
+                        -- Không bay tới waypoint có tọa độ nằm bên trong thân tàu sau khi đã thoát.
+                        if destinationPos and Q.enterIfNeeded(hrp, destinationPos, "main-farm",
+                            selectedFarmTarget == "Farm Boss" and selectedBossTarget or nil) then return end
                         if destinationPos then
                             local cakeGateEntry = selectedFarmTarget == "Cake Prince"
                                 and isCakePrinceReady and (destinationPos - CAKE_PRINCE_GATE_POS).Magnitude < 1
@@ -14199,7 +14355,7 @@ _G.MHSpawn(function()
 
                     if root then
                         local enterOk, enterResult = pcall(function()
-                            return Q.enterIfNeeded(root, npcPos)
+                            return Q.enterIfNeeded(root, npcPos, "melee-shop")
                         end)
                         if not enterOk then
                             error("Lỗi khi đi qua cổng vào Underwater City: " .. tostring(enterResult))
@@ -14221,9 +14377,7 @@ _G.MHSpawn(function()
             if World2 then
                 local transitDeadline = os.clock() + 75
                 local function inCursedShip(pos)
-                    return pos ~= nil
-                        and pos.X >= 650 and pos.X <= 1600
-                        and pos.Z >= 32500 and pos.Z <= 33800
+                    return Q.isCursedShipPosition(pos)
                 end
                 while os.clock() < transitDeadline do
                     if not (Q.MeleeShop.running and Q.MeleeShop.token == token and _G.BuyMeleeActive == true) then
@@ -14240,7 +14394,7 @@ _G.MHSpawn(function()
                         if playerInShip == npcInShip then break end
 
                         local transitOk, transitErr = pcall(function()
-                            return Q.enterIfNeeded(root, npcPos)
+                            return Q.enterIfNeeded(root, npcPos, "melee-shop")
                         end)
                         if not transitOk then
                             error("Lỗi khi thoát Thuyền Ma trước khi mua võ: " .. tostring(transitErr))
@@ -14451,6 +14605,518 @@ _G.MHSpawn(function()
     end
 end)
 
+
+
+
+-- =========================================================
+-- TAB RACE (Sea 2): LẤY MŨ CHIẾN BINH (WARRIOR HELMET) -> UP RACE V2 -> UP RACE V3
+--  Thứ tự bắt buộc: Warrior Helmet (nhiệm vụ Bartilo) -> V2 (Alchemist) -> V3 (Wenlocktoad)
+--  * Tiến trình đọc từ server (BartiloQuestProgress / Alchemist / Wenlocktoad); mọi bước ghi log "[Race]" ở F9.
+--  * Tái sử dụng bộ farm Boss + Fast Attack + bay có sẵn của hub.
+--  * Toạ độ NPC / tên remote viết theo bản game phổ biến: nếu game đổi, xem log F9 để chỉnh trong Q.RACE.NPC.
+-- =========================================================
+Q.RACE = { on = false, running = false, status = "Disabled", stage = "", lastTry = {},
+           doHelmet = true, doV2 = true, doV3 = true, plated = false }
+Q.RACE.NPC = {
+    Bartilo     = Vector3.new(-456.28, 73.07, 299.89),
+    Alchemist   = Vector3.new(-2778.80, 72.00, -3260.00),
+    Wenlocktoad = Vector3.new(-1760.00, 72.00, 1790.00),
+}
+Q.RACE.BOSS_POS = {
+    ["Swan Pirate"] = Vector3.new(1068.66, 137.61, 1322.11),
+    ["Zombie"]      = Vector3.new(-5622.03, 48.51, -728.75),
+    ["Fajita"]      = Vector3.new(-2000.00, 80.00, -4000.00),
+}
+
+function Q.RACE.setStatus(t) Q.RACE.status = t end
+function Q.RACE.log(...) print("[Race]", ...) pcall(Q.qlog, "Race:", ...) end
+function Q.RACE.every(key, gap)
+    local now = tick()
+    if now - (Q.RACE.lastTry[key] or 0) < gap then return false end
+    Q.RACE.lastTry[key] = now
+    return true
+end
+
+function Q.RACE.invoke(...)
+    local commF = getCommF()
+    if not commF then return nil end
+    local args = {...}
+    local done, ok, res = false, false, nil
+    _G.MHSpawn(function()
+        ok, res = pcall(function() return commF:InvokeServer(table.unpack(args)) end)
+        done = true
+    end)
+    local t0 = tick()
+    while not done and tick() - t0 < 6 do task.wait(0.1) end
+    if not done or not ok then return nil end
+    return res
+end
+
+function Q.RACE.raceName()
+    local n = "?"
+    pcall(function() n = tostring(LocalPlayer.Data.Race.Value) end)
+    return n
+end
+
+-- QUÉT RACE: đọc Data.Race (+ các con, thuộc tính nhân vật) để biết V1/V2/V3. Trả về số phiên bản 1..3
+function Q.RACE.version()
+    local ver = 1
+    pcall(function()
+        local race = LocalPlayer.Data.Race
+        local ev = race:FindFirstChild("Evolved")
+        if ev then
+            ver = 2
+            local n = tonumber(ev.Value)
+            if n and n >= 3 then ver = 3 end
+        end
+        -- V3: tên con/thuộc tính chứa "v3" / "transformed" / "ability"
+        for _, c in ipairs(race:GetChildren()) do
+            local nm = string.lower(c.Name)
+            if (nm == "v3" or nm == "racev3" or nm == "transformed") and (c.Value == true or tonumber(c.Value) == 3) then ver = 3 end
+        end
+        local char = LocalPlayer.Character
+        if char then
+            if char:FindFirstChild("RaceTransformed") or char:GetAttribute("RaceV3") == true
+                or char:GetAttribute("RaceVersion") == 3 then ver = 3
+            elseif ver < 2 and (char:GetAttribute("RaceVersion") == 2 or char:GetAttribute("RaceV2") == true) then ver = 2 end
+        end
+        local a = race:GetAttribute("Version") or race:GetAttribute("RaceVersion")
+        if tonumber(a) and tonumber(a) > ver then ver = tonumber(a) end
+    end)
+    Q.RACE.ver = ver
+    return ver
+end
+
+-- Race V2 đã mở chưa
+function Q.RACE.hasV2()
+    return Q.RACE.version() >= 2
+end
+
+-- Race V3 đã mở chưa
+function Q.RACE.hasV3()
+    return Q.RACE.version() >= 3
+end
+
+-- In toàn bộ Data.Race ra F9 để đối chiếu nếu quét sai
+_G.ScanRace = function()
+    print("[Race] === QUÉT RACE ===")
+    pcall(function()
+        local race = LocalPlayer.Data.Race
+        print("[Race] Data.Race =", tostring(race.Value))
+        for _, c in ipairs(race:GetChildren()) do
+            print("[Race]   con:", c.Name, c.ClassName, pcall(function() return tostring(c.Value) end) and tostring(c.Value) or "")
+        end
+        for k, v in pairs(race:GetAttributes()) do print("[Race]   attr:", k, tostring(v)) end
+    end)
+    pcall(function()
+        local char = LocalPlayer.Character
+        for k, v in pairs(char:GetAttributes()) do print("[Race]   char attr:", k, tostring(v)) end
+    end)
+    print("[Race] Phiên bản phát hiện: V" .. Q.RACE.version())
+    return Q.RACE.ver
+end
+
+-- Mũ Chiến Binh (Warrior Helmet): túi, nhân vật, phụ kiện hoặc kho đồ server
+function Q.RACE.hasHelmet()
+    local function scan(c)
+        if not c then return false end
+        for _, t in ipairs(c:GetDescendants()) do
+            if string.find(string.lower(t.Name), "warrior helmet", 1, true) then return true end
+        end
+        return false
+    end
+    if scan(LocalPlayer:FindFirstChild("Backpack")) or scan(LocalPlayer.Character) then return true end
+    local inv = Q.RACE.invoke("getInventory")
+    if type(inv) == "table" then
+        local found = false
+        local function walk(t, d)
+            if d > 4 or found then return end
+            for k, it in pairs(t) do
+                if type(it) == "table" then
+                    local nm = it.Name or it.name or (type(k) == "string" and k or nil)
+                    if type(nm) == "string" and string.find(string.lower(nm), "warrior helmet", 1, true) then found = true return end
+                    walk(it, d + 1)
+                end
+            end
+        end
+        walk(inv, 0)
+        return found
+    end
+    return false
+end
+
+function Q.RACE.root()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+-- Bay tới điểm (qua cổng Thuyền Ma nếu cần) rồi đặt chính xác
+function Q.RACE.goto(pos, near)
+    local root = Q.RACE.root()
+    if not root then return false end
+    if Q.enterIfNeeded(root, pos, "race") then return false end
+    if (root.Position - pos).Magnitude <= (near or 10) then return true end
+    pcall(function()
+        flyTo(CFrame.new(pos + Vector3.new(0, 3, 0)), math.max(flySpeed or 190, 220), function()
+            return Q.RACE.on and LocalPlayer.Character ~= nil
+        end)
+    end)
+    local r2 = Q.RACE.root()
+    return r2 ~= nil and (r2.Position - pos).Magnitude <= (near or 10) + 12
+end
+
+function Q.RACE.fightBoss(name)
+    if Q.RACE.BOSS_POS[name] and not bossSpawnLocations[name] then bossSpawnLocations[name] = Q.RACE.BOSS_POS[name] end
+    if selectedBossTarget ~= name or selectedFarmTarget ~= "Farm Boss" or not autoFarmEnabled then
+        Q.DK.stopFarms()
+        selectedBossTarget = name
+        selectedFarmTarget = "Farm Boss"
+        pcall(function() bossDropdownLabel.Text = "👑 Boss: " .. name end)
+        autoFarmEnabled = true
+        Q.RACE.log("bật farm ->", name)
+    end
+end
+
+function Q.RACE.stopFight()
+    if selectedFarmTarget == "Farm Boss" and autoFarmEnabled then
+        autoFarmEnabled = false
+        if toggleUpdateFuncs["AutoFarmBossToggle"] then pcall(toggleUpdateFuncs["AutoFarmBossToggle"], false) end
+    end
+    if autoChestEnabled and Q.RACE.chestOn then
+        autoChestEnabled = false
+        Q.RACE.chestOn = false
+        if toggleUpdateFuncs["AutoFarmChestToggle"] then pcall(toggleUpdateFuncs["AutoFarmChestToggle"], false) end
+    end
+end
+
+function Q.RACE.talk(npcName, pos)
+    if not Q.RACE.goto(pos, 12) then return false end
+    local npc = Q.DK.findNpc(string.lower(npcName))
+    if npc and Q.SB and Q.SB.talk then
+        Q.SB.on = true
+        Q.SB.talk(npc, {"yes", "ok", "accept", "okay"}, nil, 8)
+        Q.SB.on = false
+    end
+    return true
+end
+
+-- ===================== 1) WARRIOR HELMET (Bartilo) =====================
+-- Đọc tiến độ Bartilo: server có thể trả SỐ (0/1/2/3...) hoặc BẢNG (KilledBandit/KilledSpring/DidPlates). Chuẩn hóa về bước 0..3
+function Q.RACE.bartiloStep(p)
+    if type(p) == "number" then return math.floor(p) end
+    if type(p) == "table" then
+        if p.DidPlates then return 3 end
+        if p.KilledSpring then return 2 end
+        if p.KilledBandit then return 1 end
+        return 0
+    end
+    return nil
+end
+
+function Q.RACE.startBartilo()
+    if not Q.RACE.every("bartiloStart", 8) then return end
+    if Q.RACE.goto(Q.RACE.NPC.Bartilo, 12) then
+        Q.RACE.log("nhận quest Bartilo ->", tostring(Q.RACE.invoke("StartQuest", "BartiloQuest", 1)))
+        Q.RACE.talk("bartilo", Q.RACE.NPC.Bartilo)
+    end
+end
+
+function Q.RACE.stepHelmet()
+    Q.RACE.setStatus("Mũ Chiến Binh: nhiệm vụ Bartilo")
+    local raw = Q.RACE.invoke("BartiloQuestProgress", "Bartilo")
+    local st = Q.RACE.bartiloStep(raw)
+    if Q.RACE.every("bartiloDump", 15) then
+        local dump = {}
+        if type(raw) == "table" then for k, v in pairs(raw) do dump[#dump + 1] = tostring(k) .. "=" .. tostring(v) end
+        else dump[1] = tostring(raw) end
+        Q.RACE.log("Bartilo tiến độ:", table.concat(dump, ", "), "-> bước", tostring(st))
+    end
+    if st == nil then
+        -- server không trả gì: nhận quest ở Bartilo rồi thử lại
+        Q.RACE.stopFight()
+        Q.RACE.startBartilo()
+        return
+    end
+
+    if st <= 0 then
+        -- chưa nhận hoặc đang diệt Swan Pirates: đảm bảo đã nhận quest
+        Q.RACE.setStatus("Bartilo: diệt Swan Pirates")
+        if Q.RACE.every("bartiloAccept", 60) then Q.RACE.startBartilo() end
+        Q.RACE.fightBoss("Swan Pirate")
+    elseif st == 1 then
+        Q.RACE.setStatus("Bartilo: đánh Jeremy")
+        Q.RACE.fightBoss("Jeremy")
+    elseif st == 2 then
+        Q.RACE.stopFight()
+        Q.RACE.setStatus("Bartilo: giẫm các nút (plates)")
+        local scope = workspace:FindFirstChild("Map") or workspace
+        local list = Q.SB.findAll({"plate"}, scope)
+        if #list == 0 then Q.RACE.log("không thấy plates trong Map") end
+        for _, o in ipairs(list) do
+            if not Q.RACE.on then return end
+            if o:IsA("BasePart") then Q.SB.goAndActivate(o, 0.6) end
+        end
+        Q.RACE.invoke("BartiloQuestProgress", "DidPlates")
+    else
+        Q.RACE.stopFight()
+        Q.RACE.setStatus("Bartilo: trả nhiệm vụ nhận Mũ Chiến Binh")
+        Q.RACE.talk("bartilo", Q.RACE.NPC.Bartilo)
+        Q.RACE.invoke("BartiloQuestProgress", "Bartilo")
+        -- đã trả nhiệm vụ: coi như xong bước mũ (tránh kẹt nếu không đọc được mũ trong túi)
+        Q.RACE.bartiloDoneCount = (Q.RACE.bartiloDoneCount or 0) + 1
+        if Q.RACE.bartiloDoneCount >= 3 then Q.RACE.helmetDone = true end
+    end
+end
+
+-- ===================== 2) RACE V2 (Alchemist) =====================
+function Q.RACE.hasFlower(n)
+    local function scan(c)
+        if not c then return false end
+        for _, t in ipairs(c:GetChildren()) do
+            local nm = string.lower(t.Name)
+            if string.find(nm, "flower", 1, true) and (string.find(nm, tostring(n), 1, true)
+                or string.find(nm, ({"blue", "red", "yellow"})[n], 1, true)) then return true end
+        end
+        return false
+    end
+    return scan(LocalPlayer:FindFirstChild("Backpack")) or scan(LocalPlayer.Character)
+end
+
+function Q.RACE.stepV2()
+    Q.RACE.setStatus("Race V2: Alchemist + 3 hoa")
+    if Q.RACE.every("alchemist1", 20) then Q.RACE.log("Alchemist 1 ->", tostring(Q.RACE.invoke("Alchemist", "1"))) end
+    if not (Q.RACE.hasFlower(1) and Q.RACE.hasFlower(2) and Q.RACE.hasFlower(3)) then
+        -- Nhận quest ở Alchemist rồi đi gom hoa
+        if Q.RACE.every("alchemistTalk", 20) then
+            if Q.RACE.goto(Q.RACE.NPC.Alchemist, 12) then
+                Q.RACE.invoke("Alchemist", "2")
+                Q.RACE.talk("alchemist", Q.RACE.NPC.Alchemist)
+            end
+        end
+        -- Hoa xanh (Flower1, chỉ xuất hiện ban đêm) và hoa đỏ (Flower2) nằm trong workspace
+        for n = 1, 2 do
+            if not Q.RACE.hasFlower(n) then
+                local f = workspace:FindFirstChild("Flower" .. n)
+                if f then
+                    Q.RACE.setStatus(("Race V2: nhặt hoa %s"):format(n == 1 and "xanh" or "đỏ"))
+                    Q.RACE.stopFight()
+                    Q.SB.goAndActivate(f, 0.8)
+                    return
+                elseif n == 1 then
+                    Q.RACE.setStatus("Race V2: hoa xanh chỉ xuất hiện ban đêm - đang chờ...")
+                end
+            end
+        end
+        -- Hoa vàng rớt từ Zombie
+        if not Q.RACE.hasFlower(3) then
+            Q.RACE.setStatus("Race V2: diệt Zombie để lấy hoa vàng")
+            Q.RACE.fightBoss("Zombie")
+        else
+            Q.RACE.stopFight()
+        end
+        return
+    end
+    Q.RACE.stopFight()
+    Q.RACE.setStatus("Race V2: đưa hoa cho Alchemist và uống thuốc")
+    if Q.RACE.goto(Q.RACE.NPC.Alchemist, 12) then
+        Q.RACE.invoke("Alchemist", "3")
+        Q.RACE.talk("alchemist", Q.RACE.NPC.Alchemist)
+    end
+end
+
+-- ===================== 3) RACE V3 (Wenlocktoad) =====================
+function Q.RACE.stepV3()
+    local race = Q.RACE.raceName()
+    Q.RACE.setStatus("Race V3: Wenlocktoad (" .. race .. ")")
+    if Q.RACE.every("wenlockInfo", 30) then
+        Q.RACE.log("Wenlocktoad 1 ->", tostring(Q.RACE.invoke("Wenlocktoad", "1")))
+    end
+    local r = string.lower(race)
+    if string.find(r, "human", 1, true) then
+        Q.RACE.setStatus("Race V3 (Human): diệt Diamond / Jeremy / Fajita")
+        for _, b in ipairs({"Diamond", "Jeremy", "Fajita"}) do
+            local live = false
+            local ef = workspace:FindFirstChild("Enemies")
+            if ef then
+                for _, m in ipairs(ef:GetChildren()) do
+                    local h = m:FindFirstChildOfClass("Humanoid")
+                    if h and h.Health > 0 and string.find(string.lower(m.Name), string.lower(b), 1, true) then live = true end
+                end
+            end
+            if live then Q.RACE.fightBoss(b) return end
+        end
+        -- chưa thấy boss nào: bay tới chỗ hồi sinh của từng boss
+        Q.RACE.bossIdx = ((Q.RACE.bossIdx or 0) % 3) + 1
+        Q.RACE.fightBoss(({"Diamond", "Jeremy", "Fajita"})[Q.RACE.bossIdx])
+    elseif string.find(r, "mink", 1, true) then
+        Q.RACE.setStatus("Race V3 (Mink): nhặt rương, không được chết")
+        if not autoChestEnabled then
+            Q.RACE.chestOn = true
+            autoChestEnabled = true
+            if toggleUpdateFuncs["AutoFarmChestToggle"] then pcall(toggleUpdateFuncs["AutoFarmChestToggle"], true) end
+        end
+    else
+        Q.RACE.setStatus("Race V3 (" .. race .. "): nhiệm vụ này cần làm tay, script chỉ gọi Wenlocktoad")
+    end
+    if Q.RACE.every("wenlockFinish", 20) then
+        Q.RACE.log("Wenlocktoad 2 ->", tostring(Q.RACE.invoke("Wenlocktoad", "2")))
+        Q.RACE.log("Wenlocktoad 3 ->", tostring(Q.RACE.invoke("Wenlocktoad", "3")))
+    end
+end
+
+function Q.RACE.finish(msg)
+    Q.RACE.setStatus(msg)
+    Q.RACE.log(msg)
+    Q.RACE.stopFight()
+    Q.RACE.on = false
+    if toggleUpdateFuncs["AutoRaceUpgradeToggle"] then pcall(toggleUpdateFuncs["AutoRaceUpgradeToggle"], false) end
+end
+
+function Q.RACE.step()
+    if not World2 then
+        if not World3 then
+            -- Sea 1: tự chuyển sang Sea 2
+            Q.RACE.setStatus("Đang chuyển sang Sea 2...")
+            if Q.RACE.every("travel2", 15) then Q.RACE.log("TravelDressrosa ->", tostring(Q.RACE.invoke("TravelDressrosa"))) end
+        else
+            Q.RACE.setStatus("Chỉ có ở Sea 2 (đang ở Sea 3, hãy sang Sea 2)")
+        end
+        return
+    end
+    if Q.RACE.hasV3() then Q.RACE.finish("Đã có Race V3 ✅") return end
+
+    -- cập nhật trạng thái mũ mỗi 15s (getInventory chậm nên không gọi mỗi vòng)
+    if Q.RACE.every("helmetScan", 15) then
+        Q.RACE.helmetCache = Q.RACE.hasHelmet()
+    end
+    local helmet = Q.RACE.helmetDone or Q.RACE.helmetCache == true
+
+    local stage
+    if Q.RACE.hasV2() then
+        -- đã có V2 thì không cần làm mũ nữa
+        if Q.RACE.doV3 then stage = "v3" else Q.RACE.finish("Xong các mục đã chọn") return end
+    elseif not helmet and Q.RACE.doHelmet then stage = "helmet"
+    elseif Q.RACE.doV2 then stage = "v2"
+    else
+        Q.RACE.finish("Xong các mục đã chọn")
+        return
+    end
+    if stage ~= Q.RACE.stage then
+        Q.RACE.stage = stage
+        Q.RACE.stopFight()
+        Q.RACE.log("giai đoạn:", stage, "| race:", Q.RACE.raceName(), "| V" .. Q.RACE.version(), "| helmet:", tostring(helmet))
+    end
+    if stage == "helmet" then Q.RACE.stepHelmet()
+    elseif stage == "v2" then Q.RACE.stepV2()
+    else Q.RACE.stepV3() end
+end
+
+function Q.RACE.loop()
+    if Q.RACE.running then return end
+    Q.RACE.running = true
+    while Q.RACE.on do
+        task.wait(1.5)
+        local ok, err = pcall(Q.RACE.step)
+        if not ok then Q.RACE.log("lỗi:", tostring(err)) end
+    end
+    Q.RACE.running = false
+    if not string.find(Q.RACE.status, "✅", 1, true) then Q.RACE.setStatus("Disabled") end
+end
+
+-- ===================== GIAO DIỆN: TAB "Race V2/V3" =====================
+;(function()
+    local racePage = createTab("RaceV", "", false)
+    pcall(function()
+        tabs["RaceV"].Button.Text = "Race V2/V3"
+        tabs["RaceV"].Button.LayoutOrder = 6
+    end)
+    -- đổi tên hiển thị tiêu đề trang khi chọn tab (tab đặt tên bên trong createTab dùng tên khóa)
+    pcall(function()
+        tabs["RaceV"].Button.MouseButton1Click:Connect(function() pageTitle.Text = "Race V2/V3" end)
+    end)
+    MH.section(racePage, "Race V2 / V3 (Sea 2)", -1)
+
+    -- thẻ trạng thái
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 62)
+    card.BackgroundColor3 = BANANA_CARD
+    card.LayoutOrder = 0
+    card.Parent = racePage
+    addCorner(card, 8)
+    addStroke(card, BANANA_CARD_BORDER, 1.2)
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.new(1, -24, 1, -8)
+    txt.Position = UDim2.new(0, 12, 0, 4)
+    txt.BackgroundTransparency = 1
+    txt.TextColor3 = Color3.fromRGB(190, 190, 205)
+    txt.TextSize = 11
+    txt.Font = Enum.Font.Gotham
+    txt.TextWrapped = true
+    txt.TextXAlignment = Enum.TextXAlignment.Left
+    txt.TextYAlignment = Enum.TextYAlignment.Top
+    txt.Parent = card
+    _G.MHSpawn(function()
+        while txt.Parent do
+            pcall(function()
+                txt.Text = string.format("🧬 Race: %s  |  V2: %s  |  V3: %s\n🪖 Warrior Helmet: %s\nStatus: %s",
+                    Q.RACE.raceName(), Q.RACE.hasV2() and "✅" or "❌", Q.RACE.hasV3() and "✅" or "❌",
+                    (Q.RACE.helmetCache and "✅" or "❌"), tostring(Q.RACE.status))
+            end)
+            task.wait(0.7)
+        end
+    end)
+    _G.MHSpawn(function()
+        while card.Parent do
+            if World2 and tick() - (Q.RACE.helmetAt or 0) > 20 then
+                Q.RACE.helmetAt = tick()
+                pcall(function() Q.RACE.helmetCache = Q.RACE.hasHelmet() end)
+            end
+            task.wait(2)
+        end
+    end)
+
+    createToggleFeature(racePage, "AutoRaceUpgradeToggle", "Auto Race V2/V3",
+        "Sea 2: get the Warrior Helmet first (Bartilo quest) → upgrade Race V2 (Alchemist) → upgrade Race V3 (Wenlocktoad)",
+        1, false, function(state)
+            Q.RACE.on = state
+            if state then
+                Q.RACE.stage = ""
+                Q.RACE.helmetDone = false
+                Q.RACE.bartiloDoneCount = 0
+                Q.RACE.lastTry = {}
+                Q.RACE.setStatus("Đang khởi động...")
+                Q.RACE.log("BẬT Auto Race | World2 =", tostring(World2), "| V" .. Q.RACE.version())
+                _G.MHSpawn(Q.RACE.loop)
+            else
+                Q.RACE.stopFight()
+                Q.RACE.setStatus("Disabled")
+            end
+        end)
+
+    createToggleFeature(racePage, "RaceHelmetToggle", "Lấy Mũ Chiến Binh (Warrior Helmet)",
+        "Bắt buộc làm trước V2/V3: nhiệm vụ Bartilo (Swan Pirates → Jeremy → plates)",
+        2, Q.RACE.doHelmet, function(state) Q.RACE.doHelmet = state end)
+    createToggleFeature(racePage, "RaceV2Toggle", "Up Race V2",
+        "Alchemist: gom hoa xanh (ban đêm) + hoa đỏ + hoa vàng (Zombie) rồi uống thuốc",
+        3, Q.RACE.doV2, function(state) Q.RACE.doV2 = state end)
+    createToggleFeature(racePage, "RaceV3Toggle", "Up Race V3",
+        "Wenlocktoad: Human đánh 3 boss, Mink nhặt rương; các tộc khác cần làm tay",
+        4, Q.RACE.doV3, function(state) Q.RACE.doV3 = state end)
+
+    MH.section(racePage, "Raid / Misc", 10)
+end)()
+
+_G.CheckRace = function()
+    print("[Race] Race =", Q.RACE.raceName(), "| V2 =", Q.RACE.hasV2(), "| V3 =", Q.RACE.hasV3(), "| Helmet =", Q.RACE.hasHelmet())
+    print("[Race] Alchemist 1 ->", tostring(Q.RACE.invoke("Alchemist", "1")))
+    local p = Q.RACE.invoke("BartiloQuestProgress", "Bartilo")
+    if type(p) == "table" then for k, v in pairs(p) do print("   Bartilo", k, v) end else print("   Bartilo ->", tostring(p)) end
+end
+_G.AutoRaceUpgrade = function(on)
+    if toggleUpdateFuncs["AutoRaceUpgradeToggle"] then pcall(toggleUpdateFuncs["AutoRaceUpgradeToggle"], on ~= false) end
+    Q.RACE.on = (on ~= false)
+    if Q.RACE.on then _G.MHSpawn(Q.RACE.loop) end
+end
 
 
 -- MENU SAFETY: đảm bảo ScreenGui không bị tắt/ẩn sau khi thêm module Shop.
